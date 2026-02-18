@@ -1,0 +1,2388 @@
+---
+author: "Davide Bortoletto, Bryan Patarini, Gianmarco Rosa, Greta Schiappacasse"
+output:
+  pdf_document:
+    citation_package: natbib
+    df_print: default
+    number_sections: true
+    toc: false
+geometry: "top=1.5in, bottom=1.5in, left=1.5in, right=1.5in"
+bibliography: references.bib
+link-citations: true
+documentclass: report
+fontsize: 10pt
+mainfont: IBMPlexMono
+header-includes:
+  - \usepackage{booktabs}
+  - \usepackage{siunitx}
+  - \usepackage[english]{babel}
+  - \usepackage{bm}
+  - \usepackage{sectsty}        # permette di cambiare lo stile dei titoli
+  - \usepackage{titlesec} 
+  - \usepackage{nameref}        # permette di cambiare dimensione e spaziatura
+  - \allsectionsfont{\bfseries\rmfamily}  # tutti i titoli in grassetto e font standard
+  - \titleformat{\chapter}[display]{\normalfont\huge\bfseries}{Section \thechapter}{0pt}{\Huge\bfseries}
+  - \titleformat{\section}{\Large\bfseries}{\thesection}{1em}{}  # Sottosezioni leggermente più piccole
+  - \titleformat{\subsubsection}{\bfseries\normalsize}{\thesubsubsection}{1em}{}  # Sottosottosezioni
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+\begin{titlepage}
+\title{\Huge Università degli Studi di Padova\\
+    \huge Dipartimento di Scienze Statistiche\\
+    {\huge Corso di Laurea Magistrale in Scienze Statistiche}\\
+    \vspace{1cm}
+    \includegraphics[width=0.3\textwidth]{"Logo_Università_Padova.svg.png"} \\
+    \vspace{1cm}
+\Huge   Predicting IMDb ratings: an analysis of factors influencing critical success in movies
+}
+\author{Davide Bortoletto, Bryan Patarini, Gianmarco Rosa, Greta Schiappacasse}
+\date{\today}
+\counterwithin{table}{section}
+    \maketitle
+    \thispagestyle{empty}
+    \vspace*{5cm}%
+\end{titlepage}
+\tableofcontents
+\cleardoublepage
+
+# Introduction 
+
+## Research question
+
+A major Hollywood film producer has commissioned our team to carry out a
+study with the goal of improving the artistic quality and critical
+reception of future movies. Rather than focusing only on box office
+success, the producer wants to create films that are more appreciated by
+critics and by movie enthusiasts. 
+
+The main goal of this project is to understand which production choices are associated with high critical
+ratings. In particular, the producer is interested in knowing which
+decisions made during the production process can improve the quality of
+a film. For example, which actors should be hired? Which directors are
+more likely to deliver successful movies? Which screenwriters and
+composers should be chosen? Which genres tend to receive better reviews?
+The producer is also interested in other creative and strategic aspects.
+These include whether certain words used in movie titles are more
+attractive to audiences, and whether targeting a specific audience
+category (such as movies suitable for all viewers, restricted to viewers
+aged 14 and above, or limited to adults only) has an impact on critical
+success. The explanatory goal of this analysis is to provide data driven answers
+to these questions, by identifying the elements that are most strongly
+related to higher critical ratings.
+
+In addition to this explanatory goal, the producer has a predictive
+objective. They would like to estimate the expected critical ratings of
+one of their upcoming movies scheduled for release in the next few
+months: The Odyssey, directed by Christopher Nolan, which will be released in
+July 2026.
+
+# Dataset construction
+
+To meet our client’s request, we needed to build an appropriate dataset.
+For each movie, the dataset had to contain information about the cast
+members, other characteristics of the film, and an overall indicator of
+the movie’s critical rating. The code written and used to build the
+dataset is available in the file **dataset_creation_and_cleaning.R**.
+
+## Gathering information from IMDb bulk data
+
+The dataset was built in several steps by combining two main sources:
+IMDb, one of the most well-known movie review aggregators, and Wikidata,
+the Wikipedia API. IMDb provides several bulk data files with
+information on almost every movie ever produced, available at **https://datasets.imdbws.com/**. In our analysis, we
+used the following files:
+
+\begin{itemize}
+  \item \textbf{title.ratings.tsv}: contains the average rating and the number of votes for each movie;
+  \item \textbf{name.basics.tsv}: includes basic information about people, such as actors, directors, writers, and composers;
+  \item \textbf{title.crew.tsv}: lists the directors and writers associated with each movie;
+  \item \textbf{title.principals.tsv}: contains the main cast and crew members for each movie;
+  \item \textbf{title.basics.tsv}: provides general information about each movie, including the title, release year, runtime, and genres.
+\end{itemize}
+
+We filtered information from these datasets: since our commissioner is a
+major producer, we decided to consider only movies with at least 18k
+votes. We also decided to limit our analysis to movies from 1980 until
+2024, since movies too old would be having a completely different cast
+from the cinema industry workers that are available today. On the other
+hand, we decided to keep deceased cast members in the dataset for the
+following reason. Even though the variables releated to deceased cast members are not useful from an
+interpretative point of view (the producer who commissioned the study
+will never be able to hire a deceased actor), they need to be kept in
+the model as control variables. Indeed, if an important but deceased
+cast member was removed from a successful movie in the dataset, part of
+the movie’s success would be incorrectly attributed to the remaining
+younger cast members. This would make their coefficients artificially
+larger. As a result, the model could produce biased conclusions and
+potentially lead our client to hire the wrong people.
+
+From the file, basic information was taken about each movie:
+\begin{itemize}
+  \item \texttt{tconst}: IMDb id of the movie;
+  \item \texttt{primaryTitle}: full title in English of the movie;
+  \item \texttt{startYear}: release year of the movie;
+  \item \texttt{runtimeMinutes}: runtime in minutes of the movie;
+  \item \texttt{averageRating}: average movie rating provided by IMDb, a continuous value ranging from 1 to 10. This can be seen as an indicator of the movie’s overall quality and critical reception. It will be used as our response variable.
+\end{itemize}
+
+After identifying the movies, we collected information on their cast
+members. We selected the top 3500 actors, 300 directors, 100 writers,
+and 30 composers. We chose a larger number of actors and directors
+because we expect them to have a stronger impact on the perceived
+quality of a movie. We considered a larger number of actors than
+directors because each film usually has a large cast of actors and only
+one or two directors. In addition, we required that each person appears
+in at least six movies in our sample. This rule was used to exclude
+people with very limited experience in successful movies, as we assumed
+they would have a smaller effect on the rating, and to limit the
+dimensionality of the dataset.
+
+Each cast member was represented by a dummy variable: the value is 1 if
+the person worked on the movie, and 0 otherwise. After checking that
+there were no cases of homonymy, we named each column related to a
+person using the format \texttt{job\_name\_surname}, where the job could be
+actor, director, writer, or composer.
+
+Along with the main movie dataset, we created a second, smaller dataset.
+For each person included in the movie dataset, this dataset contains one
+row with their full name, IMDb ID, and date of birth. This second
+dataset will be important in the next part of the analysis, where we
+will collect additional information about the cast members.
+
+## Scraping from WikiData
+
+While the information provided by the IMDb bulk files was already meaningful, we realized that some important variables were missing. It would have been useful to know the budget of each movie, the country where it was released, the studio that produced it, and its content rating. In addition, we wanted more information about the cast and crew. For example, we were interested in knowing whether the actors and directors were already experienced, and whether they had won major awards before the movie was released. For this reason, we decided to consult another reliable source, Wikipedia, through its API, WikiData. 
+
+The code included in the second section of the file **dataset_creation_and_cleaning.R** is used to build the queries to interrogate the API using the SPARQL language, which is the standard query language used to access Wikidata. The code writes a SPARQL query for each movie and accesses the Wikidata public API through an HTTP request. The code first tries to identify the movie using its IMDb ID, which is the most reliable method. If that fails, it retries by using the movie title. Through these queries, it retrieves information about the production country, the production studio, the content rating (MPAA scale), the box office revenue, the budget expenses, the number of prizes won by the movie.
+
+The responses are returned by Wikidata in JSON format, parsed in R, and cleaned so that missing or inconsistent values are handled safely. Since budgets and box office figures can be expressed in different currencies, the code also converts them into U.S. dollars using predefined exchange rates. To avoid overcomplicating the analysis, when cleaning the budget and box office variables,  we chose to ignore the inflation factor, which would have varied in different countries and different time periods. This process is repeated for all movies in the dataset, with a short pause between requests to avoid overloading the Wikidata servers, and the final result is a raw dataset where each movie is associated with the data downloaded from Wikidata. Then, the raw dataset is cleaned: budget and box office values are rescaled into millions to make them more interpretable. Categorical variables (production countries, studios, and content ratings) are transformed into dummy variables, keeping only the most frequent categories (in accordance to what was done with actors, directors, writers and composers). To handle NA values in factors, a separate category for missing values is created. Finally, all these components are merged into a single clean dataset.
+
+The final part of the scraping code of the file **dataset_creation_and_cleaning.R** collects and processes information about the cast of each movie included in the dataset. This passage is fundamental to obtain two potentially significant variables: the number of awards and, more specifically, the number of Academy awards won by the cast. To avoid data leakage, we chose to consider only the prizes won up until the year before the release of the movie.  First, the code queries Wikidata using IMDb person IDs to retrieve nationality, spoken languages, and all awards won by each person, including the year of each award. Duplicate awards are removed, and both a long format (one row per award) and an aggregated format (one row per person) are created.  
+
+Finally, the code matches actors, directors, writers, and composers listed in each film (using dummy variables) with the Wikidata award data. For every movie, it reconstructs the full cast and crew, then counts how many awards and Oscars these people won before the movie’s release year. These counts are finally added to the film dataset as new covariates, which can be used for prediction models.
+
+The code used to build the queries in the SPARQL language, to build the HTTPS request and to parse the JSON files, both for movies and cast members, was written with the assistance of Artificial Intelligence and then modified by us. The specific lines of code generated by AI are highlighted in the file **dataset_creation_and_cleaning.R**. In the end, only some of the variables scraped from Wikidata will be kept in the final dataset: some of them will be removed as leaker variables, others won't be considered interesting for the analysis.
+
+# Dataset Cleaning
+
+The code utilised to clean the dataset is included in the file **dataset_creation_and_cleaning.R**. In
+this report, we briefly describe the cleaning process.
+
+## Transformation of the response
+
+The IMDb movie rating is a numeric continuous variable that
+theoretically ranges from 1 (the lowest possible score) to 10 (the
+highest possible score). Since all the models we fit assume that the
+response variable can take values on the whole real line, and since we
+want to avoid predictions outside the theoretical support of the rating,
+we decided to apply a transformation to the response variable so that it
+takes values in $\mathbb{R}$. If \textit{x} is the \texttt{averageRating} and \texttt{y} is
+the new transformed response variable, then the transformation used is
+defined as
+
+$$
+\texttt{y} = \operatorname{logit}\left(\frac{x - 1}{9}\right),
+$$
+
+where \textit{x} is the original IMDb rating. Since two movies in our dataset
+had a rating exactly equal to 1, this transformation would produce
+infinite values. To avoid this issue, we reassigned these two movies a
+rating of 1.01 before applying the transformation.
+
+
+## Removing leaker variables
+
+Our models are also designed to predict the critical success of a movie
+just before its release. This means that any variable that is not
+available at that time must be removed, as it would cause data leakage.
+We therefore identified the following variables in the dataset as leaker
+variables:
+
+\begin{itemize}
+  \item \texttt{num\_votes}: the number of IMDb votes is known only after the movie
+  has been released and the average rating (our response variable) is
+  already available.
+  \item \texttt{box\_office}: the total revenue of the movie is known well after its
+  release.
+  \item \texttt{num\_prizes} and \texttt{num\_oscars}: awards won by the movie are
+  announced long after the movie is released in theaters.
+\end{itemize}
+
+On the other hand, the variables \texttt{awards\_before} and \texttt{oscars\_before}
+are not leaker variables: in fact, they respectively count the number of
+generic awards and Oscar awards won by cast members up until the year
+before the release of the movie: this information is available during
+the prediction process.
+
+## Handling NA values
+
+After the inclusion of the dummy variables, the only columns that
+contain NA values are \texttt{budget\_million\_usd} (65\% of NA values) and the
+two cyclical encoding variables, \texttt{time\_month\_sin} and
+\texttt{time\_month\_cos} (0.6\% of NA values). Since only 48 out of 7,600 movies
+are missing the release month, and this information is likely missing at
+random in Wikidata, we treat this as a MCAR case. Therefore, we decided
+to remove the rows corresponding to these movies.
+
+On the other hand, the \texttt{budget\_million\_usd} covariate is more
+delicate: it has a higher percentage of missing values, omitting the
+rows that have no budget would significantly decrease the size of our
+dataset. Moreover, it is likely a case of not missing at random: less
+successful movies are more likely to have a lacking Wikidata page. Doing
+imputation for this specific variable was also not recommended, since
+the percentage of NA values is too high. For these reasons, it was
+decided to convert the budget variable from a numeric covariate to a
+discretized variable, with a specific level for missing values. The new
+\texttt{budget} variable has five levels: \texttt{low}, \texttt{medium}, \texttt{high} and \texttt{veryhigh}.
+
+## Text mining on the movie titles
+
+To enrich the dataset with other variables we include also some features related to the title of the movies. The movie titles were cleaned and normalized through a series of steps: converting to lowercase, removing numbers, eliminating common stopwords and extra spaces. Each title was then split into individual words, and only words of at least three characters were kept. These words were further reduced to their root forms using a linguistic stemming procedure. From the resulting list of root words, the 70 most frequently occurring terms were identified. For each of these top words, a binary column was added in the dataset, indicating whether that term appears in the corresponding movie title.  The new variables present a large amount of zeros.
+
+## Cyclical encoding of time variables
+
+One useful piece of information obtained from Wikidata is the full
+release date of each movie. In fact, movies released at the end of the
+year tend to be more successful because of the holiday season and are
+more likely to receive Oscar nominations, while movies released at the
+beginning of the year are often less successful. For this reason, we
+wanted to include seasonality in the month variable.
+
+To do so, we used cyclical encoding for the month of release. Instead of
+using the month as a simple index from 1 to 12, we applied trigonometric
+functions with a period of 12. If \texttt{month} is the index variable
+of the month, the new cyclical encoding variables are defined as:
+
+$$
+\mathtt{month\_sin} = \sin\left(\frac{2 \pi \cdot \mathtt{month}}{12}\right), \quad
+\mathtt{month\_cos} = \cos\left(\frac{2 \pi \cdot \mathtt{month}}{12}\right)
+$$
+
+This approach correctly captures the fact that December and January are
+contiguous months, which a standard numeric encoding cannot represent.
+Both sine and cosine components are included to fully describe the 12
+month periodicity: using only one of them would assign the same sine
+value to months that are symmetric with respect to March and April, and
+the same cosine value to months that are symmetric with respect to
+January and December.
+
+## Final dataset structure
+
+The final dataset contains 7604 rows (movies) and 3031 columns. Most of
+the covariates are dummy variables that can be grouped in the following way: 
+
+\begin{itemize}
+  \item \texttt{genre\_GenreName}: columns 4-25, possible genres of the movie;
+  \item \texttt{actor\_Name\_Surname}: columns 26-2472, possible actors of the movie;
+  \item \texttt{director\_Name\_Surname}: columns 2473-2772, possible directors of the movie;
+  \item \texttt{writer\_Name\_Surname}: columns 2773-2872, possible screen players of the movie;
+  \item \texttt{composer\_Name\_Surname}: column 2873-2902, possible composers of the soundtrack of the movie;
+  \item \texttt{country\_CountryName}: columns 2903-2913, possible production countries of the movie;
+  \item \texttt{studio\_StudioName}: columns 2914-2943, possible studio production of the movie;
+  \item \texttt{rating\_RatingCode}: columns 2944-2952, possible rating of the movie;
+  \item \texttt{word\_WordName}: columns 2955-3024, possible words from the title of the movie;
+  \item \texttt{budget\_BudgetLevel}: columns 3027-3030, budget levels of the movie.
+\end{itemize}
+
+The other covariates are the following:
+
+\begin{itemize}
+  \item \texttt{time\_startYear}: column 2, release year of the movie;
+  \item \texttt{time\_mese\_cos} and \texttt{time\_mese\_sin}: columns 3025 and 3026, cyclical encoding variables of the release month of the movie;
+  \item \texttt{prizes\_before} and \texttt{oscars\_before}: columns 2953 and 2954, number of Oscar awards and number of awards in general won by the cast up until the year before the movie release date.
+\end{itemize}
+Finally, the transformed response variable \texttt{y} is included in the first column of the dataset.
+
+
+
+```{r loading dati, cache = T, echo = FALSE, warning = FALSE, message=FALSE}
+library(ncvreg)
+library(tidyverse)
+library(doParallel)
+library(foreach)
+library(glmnet)
+film = read.csv("dataset_finale.csv", row.names=1)
+```
+
+```{r, cache = T}
+head(film[,c(1:4,26,2473,2773,2873,2903,2914,2945,2955,3027)])
+```
+## Train-test split
+
+To reduce the computational cost, since our dataset has a large number
+of columns, we decided to use a train-test approach. We randomly split
+the rows of the original dataset into a training set (containing about
+75% of the observations) and a test set (containing about 25% of the
+observations). For parameter tuning, we used cross-validation on the training
+set, so that we could take advantage of the built-in R functions and
+avoid further reducing the size of the dataset. 
+
+
+```{r train test, cache = TRUE, echo = FALSE}
+set.seed(2)
+n.train = round(0.75*nrow(film))
+id.train = sample(1:nrow(film),n.train)
+train = film[id.train,]
+test = film[-id.train,]
+X.train = as.matrix(train[,-1])   
+X.test = as.matrix(test[,-1]) 
+```
+
+# Exploratory analysis
+
+A key aspect of our dataset is its high dimensionality and sparsity, which can affect both modeling choices and computational efficiency. To quantify sparsity, we computed the proportion of zero entries across all features in the design matrix:
+
+```{r lib, echo=FALSE, warning=FALSE, message=FALSE, fig.width=7, fig.height=6, cache = TRUE}
+library(paletteer)
+library(showtext)
+library(ggtext)
+library(ggwordcloud)
+library(scales)
+library(tidyverse)
+library(patchwork)
+library(fBasics)
+film_ncn = read.csv("dataset_finale.csv")
+set.seed(2)
+train_ncn = film_ncn[id.train,]
+```
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE, cache=TRUE}
+dim(train)
+mean(train == 0)
+```
+
+The result shows that more than 99% of the entries are zeros, indicating that the design matrix is extremely sparse. Accordingly, in the next section we adopt models that can efficiently handle sparse and high-dimensional data.
+
+Next, we perform some exploratory analysis on the training set in order to visualize the relationship between the response variable and some covariates and marginal distribution of the predictors. 
+
+
+```{r summary, echo=TRUE, warning=FALSE, message=FALSE, fig.width=6,fig.height=4, cache=TRUE}
+basicStats(train$y)
+```
+
+
+
+
+```{r grafici, echo=FALSE, warning=FALSE, message=FALSE, fig.width=6,fig.height=4, cache=TRUE}
+font_add("IBMPlexMono", regular = "font/IBMPlexMono-Medium.ttf")
+showtext_auto()
+gg <- ggplot(train_ncn, aes(x = y)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 bins = 30,
+                 fill = "darkgrey",
+                 color = "black",
+                 alpha = 0.4) +
+  geom_density(color = "navy",fill="navy", linewidth = 0.8, alpha=0.4) +
+  theme_bw() +
+  labs(
+    title = "Distribution of the transformed response",
+    x = "y",
+    y = "Density"
+  ) +
+  theme(
+    text = element_text(family = "IBMPlexMono"),
+    plot.title = element_text(hjust = 0.5, face = "bold", size=10)
+  )
+print(gg)
+```
+
+The summary statistics are coherent with the shape observed in the distribution of the transformed response variable $\texttt{y}$. The median (0.499) and mean (0.509) are very close, indicating a fairly balanced central tendency. The interquartile range (0.53) and the standard deviation (0.49) both point to a moderate level of variability, with dispersion largely concentrated around the center. The minimum value ($-6.80$) is far from the bulk of the data, confirming the presence of a long left tail. Ultimately, most values lie between the first and third quartiles ($0.27-0.79$).
+
+```{r grafico_durata, echo=FALSE, warning=FALSE, message=FALSE, fig.width=6, fig.height=4, cache=TRUE}
+font_add("IBMPlexMono", regular = "font/IBMPlexMono-Medium.ttf")
+showtext_auto()
+GG2 <- ggplot(train_ncn, aes(x = runtimeMinutes, y = y)) +
+  geom_point(color = "navy", alpha = 0.35, size = 1) +
+  geom_smooth(method = "loess", se = TRUE, color = "black") +
+  theme_bw() +
+  labs(
+    title = "Relationship between film duration and the response variable",
+    x = "Duration in minutes",
+    y = "y"
+  ) +
+  theme(
+    text = element_text(family = "IBMPlexMono"),
+    plot.title = element_text(hjust = 0.5, face = "bold",
+                              size=10)
+  )
+print(GG2)
+```
+
+The scatter plot highlights the relationship between film duration and the response variable $\texttt{y}$. Most observations are concentrated between roughly 80 and 150 minutes, where $\texttt{y}$ shows substantial variability. The smooth trend suggests a non-linear relationship; $\texttt{y}$ slightly decreases for shorter durations and then gradually increases as duration grows. For longer films, the upward trend becomes more pronounced, although the wider confidence band indicates greater uncertainty due to the smaller number of observations. Overall, duration appears to be positively associated with $\texttt{y}$, but the effect is modest and not strictly linear.
+
+```{r grafico_media_temp, echo=FALSE, warning=FALSE, message=FALSE, fig.width=7, fig.height=3, cache=TRUE}
+font_add("IBMPlexMono", regular = "font/IBMPlexMono-Medium.ttf")
+showtext_auto()
+df <- train_ncn[,c("y","time_startYear")]
+df <- df |> group_by(time_startYear) |> summarise(mean.y=mean(y))
+graf2 <- ggplot(df, aes(x=time_startYear,y=as.numeric(mean.y)))+
+  geom_area(fill = "navy", alpha = 0.3) +
+  geom_line(stat='identity', color="navy", size=.6)+
+  labs(
+    title="Mean of y across years",
+    x="Years",
+    y="Mean of y"
+  )+
+  theme_bw()+
+  theme(
+    text = element_text(family = "IBMPlexMono"),
+    plot.title = element_text(hjust = 0.5, face = "bold",
+                              size=9)
+  )
+df2 <- train_ncn[,c("X","time_startYear")]
+df2.count <- df2 %>%
+  group_by(time_startYear) %>%
+  summarise(num_IDs = n())
+
+graf1 <- ggplot(df2.count, aes(x = time_startYear, y = num_IDs)) +
+  geom_area(fill = "navy", alpha = 0.3) +
+  geom_line(color = "navy", size = .6) +
+  labs(
+    title = "Number of films produced over years",
+    x = "Year",
+    y = "Number of films"
+  ) +
+  theme_bw() +
+  theme(
+    text = element_text(family = "IBMPlexMono"),
+    plot.title = element_text(hjust = 0.5, face = "bold",
+                              size=9)
+  )
+graf2|graf1
+```
+
+As shown in the left-hand-side panel, a clear downward linear trend in the mean value of $\texttt{y}$ from 1980 to the early 2000s, followed by a period of relative stabilization with moderate fluctuations. While short term variability persists throughout the series, no sustained recovery to the initial levels observed in the early years is evident. The pattern suggests a long-term decline with little attenuation in later years. On the other hand, the number of films produced exhibits a strong upward trend from 1980 through the 2010s, indicating a substantial expansion of production over time. This relationship is not strictly linear, seems instead quadratic. In the most recent years, the series shows increased variability and a noticeable decline relative to the preceding peak, suggesting a contraction in film production due to the pandemic. Taken together, the two graphs indicate that the long-term increase in film production is not accompanied by a corresponding increase in the mean value of $\texttt{y}$. On the contrary, the transformed response declines while output expands, pointing to a potential decoupling between quantity and the underlying rating measured by $\texttt{y}$.
+
+```{r grafico_freq, echo=FALSE, warning=FALSE, message=FALSE, fig.width=8, fig.height=4, cache =TRUE}
+font_add("IBMPlexMono", regular = "font/IBMPlexMono-Medium.ttf")
+showtext_auto()
+g1 <- ggplot(train_ncn, aes(x = oscars_before)) +
+  geom_bar(fill = "navy", color = "#343434", alpha = 0.6) +
+  labs(
+    title = "Films by Oscars won by cast",
+    x = " Oscars won by cast",
+    y = "Number of films"
+  ) +
+  theme_bw() +
+  theme(
+    text = element_text(family = "IBMPlexMono"),
+    plot.title = element_text(hjust = 0.5, face = "bold",
+                              size=9)
+  )
+
+g2 <- ggplot(train_ncn, aes(x = total_awards_before)) +
+  geom_bar(fill = "navy", color = "#343434", alpha = 0.6) +
+  labs(
+    title = "Films by awards won by cast",
+    x = "Awards won by cast",
+    y = "Number of films"
+  ) +
+  theme_bw() +
+  theme(
+    text = element_text(family = "IBMPlexMono"),
+    plot.title = element_text(hjust = 0.5, face = "bold",
+                              size=9)
+  )
+
+g2|g1
+```
+
+Both distributions are highly right-skewed, indicating that the majority of films are associated with casts that had won few or no awards prior to the film’s release, while a small number involve highly decorated casts. The left panel shows a long tail for total awards, reflecting substantial heterogeneity in prior recognition. The right panel displays a similar but more concentrated pattern for Oscars, with most films linked to casts with zero or one previous Oscar. Importantly, all counts of awards and Oscars refer exclusively to achievements obtained before the release date of each film, in order to avoid any form of data leakage from post-release outcomes.
+
+```{r grafico_barplots, echo=FALSE, warning=FALSE, message=FALSE, fig.width=8, fig.height=6, cache=TRUE}
+font_add("IBMPlexMono", regular = "font/IBMPlexMono-Medium.ttf")
+showtext_auto()
+actor.col<- grep("^actor_", names(train_ncn), value = TRUE)
+director.col <- grep("^director_", names(train_ncn), value = TRUE)
+composer.col<- grep("^composer_", names(train_ncn), value = TRUE)
+writer.col<- grep("^writer_", names(train_ncn), value = TRUE)
+
+#frequenze
+actor.tot <- rowSums(t(train_ncn[, actor.col]))  
+director.tot <- rowSums(t(train_ncn[, director.col]))
+composer.tot <- rowSums(t(train_ncn[, composer.col]))
+writer.tot <- rowSums(t(train_ncn[, writer.col]))
+
+# ---- Crea dataframe con frequenze ----
+df.attori <- as.data.frame(table(actor.tot))
+colnames(df.attori) <- c("num.films", "num.actors")
+df.registi <- as.data.frame(table(director.tot))
+colnames(df.registi) <- c("num.films", "num.directors")
+df.comp <- as.data.frame(table(composer.tot))
+colnames(df.comp) <- c("num.films", "num.composers")
+df.scritt <- as.data.frame(table(writer.tot))
+colnames(df.scritt) <- c("num.films", "num.writers")
+
+df.comp$num.films <- as.numeric(as.character(df.comp$num.films))
+df.attori$num.films <- as.numeric(as.character(df.attori$num.films))
+df.registi$num.films <- as.numeric(as.character(df.registi$num.films))
+df.scritt$num.films <- as.numeric(as.character(df.scritt$num.films))
+
+
+plot.attori <- ggplot(df.attori, aes(x = as.numeric(num.films), y = as.numeric(num.actors))) +
+  geom_bar(stat = "identity", fill = "navy", color = "#343434", alpha = 0.4) +
+  labs(title = "Distribution of actors", x = "Number of films", y = "Number of actors") +
+  theme_bw() +
+  theme(text = element_text(family = "IBMPlexMono"),
+        plot.title = element_text(hjust = 0.5, face = "bold", size=9),
+        title.axis.x=element_text(size=8),
+        title.axis.y=element_text(size=8)
+        )
+
+plot.registi <- ggplot(df.registi, aes(x = as.numeric(num.films), y = as.numeric(num.directors))) +
+  geom_bar(stat = "identity", fill = "navy", color = "#343434", alpha = 0.4) +
+  labs(title = "Directors by number of films", x = "Number of films", y = "Number of directors") +
+  theme_bw() +
+  theme(text = element_text(family = "IBMPlexMono"),
+        plot.title = element_text(hjust = 0.5, face = "bold",size=9),
+        title.axis.x=element_text(size=8),
+        title.axis.y=element_text(size=8)
+        )
+
+df.comp$num.films <- as.numeric(as.character(df.comp$num.films))
+df.comp$num.composers <- as.numeric(as.character(df.comp$num.composers))
+##
+quantili <- floor(quantile(df.comp$num.films,
+                           probs = seq(0, 1, 0.25),
+                           na.rm = TRUE))
+quantili <- unique(quantili)
+df.comp$class <- cut(df.comp$num.films,
+                     breaks = quantili,
+                     include.lowest = TRUE,
+                     right = TRUE)
+##-
+lower <- quantili[-length(quantili)]
+upper <- quantili[-1]
+lower[-1] <- lower[-1] + 1
+class_labels <- paste0(lower, "-", upper)
+df.comp$class <- factor(df.comp$class,
+                        labels = class_labels)
+freq_class <- aggregate(num.composers ~ class,
+                        data = df.comp,
+                        sum)
+plot.comp <- ggplot(freq_class, aes(x = class, y = num.composers)) +
+  geom_bar(stat = "identity",
+           fill = "navy",
+           color = "#343434",
+           alpha = 0.4) +
+  labs(title = "Composers by number of films",
+       x = "Number of films (range)",
+       y = "Number of composers") +
+  scale_y_continuous(breaks = pretty_breaks()) +
+  theme_bw() +
+  theme(
+    text = element_text(family = "IBMPlexMono"),
+    plot.title = element_text(hjust = 0.5, face = "bold",size=9),
+        title.axis.x=element_text(size=8),
+        title.axis.y=element_text(size=8)
+    )
+
+plot.scritt <- ggplot(df.scritt, aes(x = as.numeric(num.films), y = as.numeric(num.writers))) +
+  geom_bar(stat = "identity", fill = "navy", color = "#343434", alpha = 0.4) +
+  labs(title = "Writers by numer of films", x = "Number of films", y = "Number of writers") +
+  theme_bw() +
+  theme(text = element_text(family = "IBMPlexMono"),
+        plot.title = element_text(hjust = 0.5, face="bold",size=9),
+        title.axis.x=element_text(size=8),
+        title.axis.y=element_text(size=8)
+        )
+
+(plot.attori|plot.registi)/
+  (plot.comp|plot.scritt)
+```
+
+The four barplots exhibit pronounced right skewness, indicating that most individuals are associated with a relatively small number of films, while a limited minority accounts for very high output. Actors show the strongest concentration at low values, with a long tail reflecting a small group of highly prolific performers. Directors display a similar but less extreme pattern. Writers also present a right-skewed distribution, with moderate dispersion and a few high-output outliers. In contrast, composers are grouped into predefined productivity classes for graphical clarity. The distribution indicates that composers tend to be associated, on average, with a higher number of films compared to the other professional roles. In conclusion, the results point to heterogeneous productivity structures across professional roles, with inequality in output being most pronounced among actors.
+
+```{r grafico_paese, echo=FALSE, warning=FALSE, message=FALSE, fig.width=8, fig.height=6, cache=TRUE}
+font_add("IBMPlexMono", regular = "font/IBMPlexMono-Medium.ttf")
+showtext_auto()
+country.cols <- grep("^country_", names(train), value = TRUE)
+train.long.country <- train_ncn %>%
+  pivot_longer(
+    cols = all_of(country.cols),
+    names_to = "country",
+    values_to = "flag"
+  ) %>%
+  filter(flag == 1) %>%
+  mutate(
+    country = gsub("^country_", "", country),
+    country = gsub("^People_s_Republic_of_", "", country)
+  )
+
+n.country <- length(unique(train.long.country$country))
+country.colors <- paletteer_c("grDevices::Blues 2", n.country)
+
+ggplot(train.long.country, aes(x = country, y = y, fill = country)) +
+  geom_boxplot(outlier.shape = "*", alpha = 0.8) +
+  scale_fill_manual(values = country.colors) +
+  coord_flip() +
+  theme_bw() +
+  labs(
+    title = "Distribution of y by country",
+    x = "Country",
+    y = "y"
+  ) +
+  guides(fill = "none") +
+  theme(
+    text = element_text(family = "IBMPlexMono"),
+    plot.title = element_text(hjust = 0.5, face = "bold",
+                              size=10),
+  )
+```
+
+The boxplot analysis of transformed IMDb scores by country reveals that $\texttt{Japan}$ and $\texttt{India}$ maintain the highest median values. While most nations cluster between $0.5$ and $1.0$, the $\texttt{United States}$ and $\texttt{United Kingdom}$ exhibit the greatest variability, characterized by wide interquartile ranges and numerous negative outliers. Conversely, $\texttt{Spain}$ and $\texttt{Italy}$ show the highest consistency with the narrowest score distributions. The $\texttt{Other}$ category contains the most extreme negative outlier, reaching approximately $-6.5$. Overall, the significant overlap of boxes suggests a relatively uniform core performance across all geographical regions.
+
+```{r grafico_genere, echo=FALSE, warning=FALSE, message=FALSE, fig.width=8, fig.height=6, cache=TRUE}
+font_add("IBMPlexMono", regular = "font/IBMPlexMono-Medium.ttf")
+showtext_auto()
+genre.cols <- grep("^genre_", names(train_ncn), value = TRUE)
+train.long.genre <- train_ncn %>%
+  pivot_longer(
+    cols = all_of(genre.cols),
+    names_to = "genre",
+    values_to = "flag"
+  ) %>%
+  filter(flag == 1) %>%
+  mutate(
+    genre = gsub("^genre_", "", genre)
+  )
+
+n.genre <- length(unique(train.long.genre$genre))
+genre.colors <- paletteer_c("grDevices::Blues 2", n.genre)
+ggplot(train.long.genre, aes(x = genre, y = y, fill = genre)) +
+  geom_boxplot(outlier.shape = "*", alpha = 0.8) +
+  scale_fill_manual(values = genre.colors) +
+  coord_flip() +
+  theme_bw() +
+  labs(
+    title = "Distribution of y by Genre",
+    x = "Genre",
+    y = "y"
+  ) +
+  guides(fill = "none") +
+  theme(
+    text = element_text(family = "IBMPlexMono"),
+    plot.title = element_text(hjust = 0.5, face = "bold",
+                              size=10)
+  )
+```
+
+This boxplots illustrate the distribution of $\texttt{y}$ across various film genres, revealing that most medians hover slightly above zero. $\texttt{News}$ and $\texttt{Documentary}$ show the highest central tendencies and narrowest spreads, suggesting more consistent values. In contrast, genres like $\texttt{Action}$, $\texttt{Comedy}$, and $\texttt{Drama}$ exhibit significant negative outliers, indicating high variability and occasional extreme underperformance in the transformed response variable $\texttt{y}$. In general, most genres maintain a median near 0.5, but the significant overlap in notches (where visible) suggests that differences between many categories seems not be  significant.
+
+```{r grafico_studio, echo=FALSE, warning=FALSE, message=FALSE, fig.width=8, fig.height=6, cache=TRUE}
+font_add("IBMPlexMono", regular = "font/IBMPlexMono-Medium.ttf")
+showtext_auto()
+prod.cols <- grep("^studio_", names(train_ncn), value = TRUE)
+train.long.prod <- train_ncn %>%
+  pivot_longer(
+    cols = all_of(prod.cols),
+    names_to = "production_company",
+    values_to = "flag"
+  ) %>%
+  filter(flag == 1) %>%
+  mutate(
+    production_company = gsub("^studio_", "", production_company)
+  )
+
+n.prod <- length(unique(train.long.prod$production_company))
+prod.colors <- paletteer_c("grDevices::Blues 2", n.prod)
+
+ggplot(train.long.prod, aes(x = production_company, y = y, fill = production_company)) +
+  geom_boxplot(outlier.shape = "*", alpha = 0.8) +
+  scale_fill_manual(values = prod.colors) +
+  coord_flip() +
+  theme_bw() +
+  labs(
+    title = "Distribution of y by production studio",
+    x = "Production studio",
+    y = "y"
+  ) +
+  guides(fill = "none") +
+  theme(
+    text = element_text(family = "IBMPlexMono"),
+    plot.title = element_text(hjust = 0.5, face = "bold",
+                              size=10)
+  )
+```
+
+The boxplot illustrates the distribution of transformed IMDb scores across production studios. $\texttt{Film4 Productions}$ and $\texttt{BBC Film}$ exhibit the highest medians and the most concentrated interquartile ranges, indicating consistent performance. Conversely, $\texttt{Blumhouse Productions}$ shows one of the lowest medians in the dataset. The $\texttt{Other}$ category displays the greatest dispersion, with significant negative outliers extending toward $-4$. Given the extensive overlap of notches and whiskers across most studios, the differences in central tendency for many groups appear marginal.
+
+```{r grafico_wordcloud, echo=FALSE, warning=FALSE, message=FALSE, fig.width=6, fig.height=4, cache=TRUE}
+font_add("IBMPlexMono", regular = "font/IBMPlexMono-Medium.ttf")
+showtext_auto()
+word.cols <- grep("word_", colnames(train_ncn), ignore.case=T)
+df.word <- train_ncn[, as.numeric(paste(word.cols, sep=','))]
+df.word <- as.data.frame(colSums(df.word))
+colnames(df.word)[1] <- "freq"
+df.word$name <- gsub("word_", "", row.names(df.word))
+row.names(df.word) <- NULL
+
+n.word <- length(unique(df.word$name))
+word.col <-  paletteer_c("grDevices::Blues 2", n.word)
+set.seed(123)
+ggplot(df.word, aes(label = name, size = freq, color = freq)) +
+  geom_text_wordcloud() +
+  scale_size_area(max_size = 13) +  
+  scale_fill_manual(values = word.col) + 
+  theme_minimal()+
+  labs(title="Wordcloud")+
+  theme(
+    text = element_text(family = "IBMPlexMono"),
+    plot.title = element_text(hjust = 0.5, face = "bold", size=10)
+  )
+
+```
+
+The word-cloud visualizes the most frequent terms in the dataset, with font size mapped to frequency. In other "words", the more a word is frequent in the title of films, the bigger is its size in the wordcloud plot. High-frequency keywords such as $\texttt{man}$, $\texttt{day}$, and $\texttt{love}$ dominate the central area, representing the most common thematic elements. Smaller peripheral terms like $\texttt{monster}$ or $\texttt{secret}$ indicate lower occurrences.
+
+# Regression
+
+In this section, we present several regression models suitable for handling high-dimensional and sparse data. We first estimated LASSO (\textit{Least Absolute Shrinkage and Selection Operator})
+regression, Ridge regression, and Elastic Net using our dataset. Then, a
+sub-dataset was built to compute LASSO regression and Elastic Net
+including first order interactions. Ridge regression with
+interactions was not estimated due to its high computational cost. SCAD (\textit{Smoothly Clipped Absolute Deviation})
+and MCP (\textit{Minimax Concave Penalty}) models are also presented in this section.
+
+## LASSO
+
+We start by implementing LASSO Regression, which uses L1 penalty. The optimal
+tuning parameter $\lambda$ = 0.00783 was selected using 8-fold cross validation. 
+Using this parameter, 393 coefficients are set different from zero. The MSE on the test set for LASSO is 0.18282.
+```{r, eval = FALSE, cache = TRUE}
+set.seed(16)
+m1 <- cv.glmnet(x = X.train, y = train$y, nfolds = 8)
+lasso <- glmnet(x = X.train, y = train$y, lambda = m1$lambda.min)
+```
+
+```{r lasso, cache = TRUE, echo = FALSE, fig.cap= '8-fold CV MSE and coefficients paths for LASSO as a function of $\\log(\\lambda)$.', fig.height= 9}
+# set.seed(16)
+# m1 <- cv.glmnet(x = X.train, y = train$y, nfolds = 8)
+# save(m1, file="cv_lasso.RData")
+par(mfrow = c(2,1))
+load("cv_lasso.RData")
+plot(m1, sign.lambda = 1)
+las=glmnet(x = X.train, y = train$y)
+plot(las, "lambda", sign.lambda = 1) # plot coef. path
+abline(v= log(m1$lambda.min), col=2)
+par(mfrow = c(1,1))
+lasso = glmnet(x = X.train, y = train$y, lambda = m1$lambda.min)
+p.lasso=predict(lasso, newx=X.test)
+mse.lasso=mean( (p.lasso-test$y)^2)
+```
+
+```{r plot lasso to 100, cache = TRUE, echo=FALSE, fig.height=10, fig.width=8, fig.cap= 'Top 50 coefficients (by absolute value) estimated by LASSO, colored by feature group.'}
+library(viridis)
+c=coef(lasso)
+c_numeric = as.numeric(c)[-1]  
+names(c_numeric) <- rownames(c)[-1]  
+coeff_pos = c_numeric[c_numeric > 0]
+coeff_neg = c_numeric[c_numeric < 0]
+
+top_pos = sort(coeff_pos, decreasing = TRUE)[1:min(25, length(coeff_pos))]
+top_neg = sort(coeff_neg)[1:min(25, length(coeff_neg))]
+
+tutti = c(top_neg, sort(top_pos, decreasing=F))
+#colori = c(rep("red", length(top_neg)), rep("blue", length(top_pos)))
+# normalizzazione centrata su 0
+#rng <- range(abs(tutti))
+#vals_scaled <- (tutti + rng[2]) / (2 * rng[2])  # da 0 a 1
+
+# palette magma
+#cols <- magma(100)[cut(vals_scaled, breaks = 100)]
+col_names = colnames(train)[-1]
+
+group = rep(NA, ncol(train)-1)
+group[grep("^genre_",    col_names)] = 1
+group[grep("^actor_",    col_names)] = 2
+group[grep("^director_", col_names)] = 3
+group[grep("^writer_",   col_names)] = 4
+group[grep("^composer_", col_names)] = 5
+group[grep("^country_",  col_names)] = 6
+group[grep("^studio_",   col_names)] = 7
+group[grep("^rating_",   col_names)] = 8
+group[c(which(col_names=="oscars_before"),which(col_names=="total_awards_before"))] = 9 #gruppo premi
+group[grep("^time_",   col_names)] = 10
+group[grep("^word_",   col_names)] = 11
+group[grep("^budget_",   col_names)] = 12
+unassigned_idx = which(is.na(group))
+group[unassigned_idx]=13
+
+group_colors = c(
+  "#800000", 
+  "#FF6666", 
+  "#FFA500", 
+  "#FFDB58", 
+  "#90EE90", 
+  "#006400", 
+  "#0000FF", 
+  "#00BFFF",
+  "#FFC0CB", 
+  "#800080", 
+  "#C8A2C8", 
+  "#808080", 
+  "#000000"  
+)
+
+group_names = c("Genre", "Actor", "Director", "Writer", "Composer", "Country", "Studio","Rating", "Awards", "Time", "Word", "Budget", "Runtime")
+
+vars_plot <- names(tutti)
+labels_plot <- gsub("^(actor|genre|director|writer|composer|country|studio|rating|time|word|budget|runtime)_",
+                    "",
+                    vars_plot)
+labels_plot <- gsub("_", " ", labels_plot)
+
+group_named <- group
+names(group_named) <- col_names
+
+group_plot <- group_named[vars_plot]
+cols <- group_colors[group_plot]
+groups_used <- sort(unique(group_plot))
+
+par(mar = c(5, 10.2, 2, 2))
+barplot(tutti,
+        horiz = TRUE,
+        col = cols,
+        las = 1,
+        cex.names = 0.8,
+        names.arg = labels_plot,
+        xlab = expression(beta),
+        border = NA)
+abline(v = 0, lty = 2, col = "gray")
+legend("bottomright",
+       inset = c(0, 0.025),
+       title = 'Coefficients group',
+       legend = group_names[groups_used],
+       fill   = group_colors[groups_used],
+       cex    = 0.9,
+       bty    = "n",
+       ncol   = 1)
+# legend("bottomright",
+#        fill = c("blue", "red"),
+#        legend = c("Positive", "Negative"),
+#        bty = "n")
+
+
+
+```
+
+
+
+
+
+## Ridge
+We also implemented Ridge Regression with L2 regularization. Unlike LASSO, Ridge Regression does not perform variable selection; all coefficients remain non-zero. The regularization parameter $\lambda$ is chosen via 8-fold cross-validation, resulting in $\lambda$ = 0.480216. The MSE on the test set for Ridge is 0.19620.
+
+```{r, cache = TRUE, eval = FALSE}
+set.seed(8)
+ridge.cv <- cv.glmnet(x = X.train, y = train$y, nfolds = 8, alpha = 0)
+ridge <- glmnet(x = X.train, y = train$y, lambda = ridge.cv$lambda.min,
+                alpha = 0)
+```
+
+```{r ridge, cache = TRUE, echo = FALSE, fig.cap = '8-fold CV MSE for Ridge as a function of $\\log(\\lambda)$.'}
+# set.seed(8)
+# ridge.cv <- cv.glmnet(x = X.train, y = train$y, nfolds = 8, alpha=0)
+# save(ridge.cv, file="cv_ridge.RData")
+load("cv_ridge.RData")
+plot(ridge.cv, sign.lambda = 1)
+ridge=glmnet(x = X.train, y = train$y, lambda = ridge.cv$lambda.min, alpha=0)
+p.ridge=predict(ridge, newx=X.test)
+mse.ridge=mean( (p.ridge-test$y)^2)
+```
+
+## Elastic Net
+Elastic Net was also estimated on the data. We selected $\alpha$ and $\lambda$ via cross validation. The parameter $\alpha$ was set to 0.65, using a 4-fold cross validation, trying multiple values of the parameter. Using this value of $\alpha$, $\lambda$ was chosen via 8-fold cross validation and set equal to 0.01321. The MSE on the test set for Elastic Net is 0.18414.
+
+```{r, eval = FALSE, cache = TRUE}
+set.seed(123)
+alpha <- c(0.1, 0.25, 0.45, 0.65, 0.85, 0.95)
+err <- NULL
+for(i in 1:length(alpha)){ # CV for alpha
+  print(i)
+  a <- alpha[i]
+  EL_tmp <- cv.glmnet(x = X.train, y = train$y, nfolds = 4, alpha = a)
+  err[i] <- EL_tmp$cvm[EL_tmp$lambda == EL_tmp$lambda.min]
+}
+
+set.seed(88)
+alpha_best <- alpha[which.min(err)] 
+elastic.net <- cv.glmnet(x = X.train, y = train$y, alpha = alpha_best,
+                         nfolds = 4) # CV for lambda
+elastic.net <- glmnet(x = X.train, y = train$y, alpha = alpha_best,
+                      lambda = elastic.net$lambda.min)
+```
+
+
+```{r el.net, cache = TRUE, echo = FALSE}
+# set.seed(123)
+# alpha=c(0.1, 0.25, 0.45, 0.65, 0.85, 0.95)
+# err=NULL
+# for(i in 1:length(alpha)){      # scelta del parametro alpha
+#   print(i)
+#   a=alpha[i]
+#   EL_tmp <- cv.glmnet(x = X.train, y = train$y, nfolds = 4, alpha=a)
+#   err[i]=EL_tmp$cvm[EL_tmp$lambda == EL_tmp$lambda.min]
+# }
+# err
+# save(err, file="errore_alpha_elasticnet.RData")
+
+# set.seed(88)
+# elastic.net=cv.glmnet(x = X.train, y = train$y, alpha=alpha_best,nfolds=4)   # cv per scelta lambda
+# elastic.net=glmnet(x = X.train, y = train$y, alpha=alpha_best, lambda=elastic.net$lambda.min)
+# save(elastic.net, file="elasticnet_NO_inter2.RData")
+
+load("elasticnet_NO_inter2.RData")
+load("errore_alpha_elasticnet.RData")
+alpha=c(0.1, 0.25, 0.45, 0.65, 0.85, 0.95)
+alpha_best=alpha[which.min(err)] 
+p.en=predict(elastic.net, newx=X.test)
+mse.elnet=mean( (p.en-test$y)^2)
+
+```
+
+
+Elastic net set some coefficients equal to zero and shrink others. In this case 346 coefficients are set different from zero.
+Looking at Figure 5.4, we observe that most of the coefficients align with those estimated by the LASSO regression. The documentary genre remains associated with the largest coefficient, while Ratzenberger and Nolan continue to rank among the top contributors. Similarly, the negative coefficients show a clear agreement with the LASSO estimates.
+
+```{r coefelnet, echo=FALSE , cache = TRUE, fig.height=10, fig.width=8, fig.cap= 'Top 50 coefficients (by absolute value) estimated by Elastic Net, colored by feature group.'}
+c <- coef(elastic.net, s = 0.01321443)
+num_non_zero <- sum(c != 0)
+
+c_numeric = as.numeric(c)[-1]  
+names(c_numeric) <- rownames(c)[-1]  
+coeff_pos = c_numeric[c_numeric > 0]
+coeff_neg = c_numeric[c_numeric < 0]
+
+top_pos = sort(coeff_pos, decreasing = TRUE)[1:min(25, length(coeff_pos))]
+top_neg = sort(coeff_neg)[1:min(25, length(coeff_neg))]
+tutti.en = c(top_neg, sort(top_pos, decreasing=F))
+
+vars_plot.en <- names(tutti.en)
+labels_plot.en <- gsub("^(actor|genre|director|writer|composer|country|studio|rating|time|word|budget|runtime)_",
+                    "",
+                    vars_plot.en)
+labels_plot.en <- gsub("_", " ", labels_plot.en)
+group_named.en <- group
+names(group_named.en) <- col_names
+
+group_plot.en <- group_named.en[vars_plot.en]
+cols.en <- group_colors[group_plot.en]
+groups_used.en <- sort(unique(group_plot.en))
+
+par(mar = c(5, 10.2, 2, 2))
+barplot(tutti.en,
+        horiz = TRUE,
+        col = cols.en,
+        las = 1,
+        cex.names = 0.9,
+        xlab = expression(beta),
+        names.arg = labels_plot.en,
+        border = NA)
+abline(v = 0, lty = 2, col = "gray")
+legend("bottomright",
+       inset = c(0, 0.025),
+       title = 'Coefficients group',
+       legend = group_names[groups_used.en],
+       fill   = group_colors[groups_used.en],
+       cex    = 0.9,
+       bty    = "n",
+       ncol   = 1)
+
+```
+
+\vspace{8cm}
+
+## MCP
+
+In order to compute MCP, we tested four values of the $\gamma$ parameter:
+2.8, 3, 3.2, and 3.5. No significant differences were observed in the
+cross-validation error across these values, so we chose $\gamma$ = 3, the
+default option. The value of the parameter $\lambda$ is chosen via cross validation, and set equal to 0.01871. The model estimated on the training set selects 29 coefficients. The MSE on the test set for MCP is 0.19532. 
+Figure 5.5 reports cross-validation error graph and the coefficients paths for MCP.
+```{r, eval = FALSE, cache = TRUE}
+set.seed(100)
+id_cv <- sample(1:5, nrow(train), replace = T)
+lambda_try <- c(seq(0.003, 0.025, length.out = 50),
+                seq(0.025, 0.6, length.out = 65))
+set.seed(1)
+cv.mcp3 <- cv.ncvreg(X = X.train,y = train$y,
+                     folds = id_cv,
+                     lambda = lambda_try, gamma = 3)
+mod.mcp.3 <- ncvreg(X = X.train,y = train$y,
+                    lambda = cv.mcp3$lambda.min)
+```
+
+```{r mcp, cache = TRUE, warning=FALSE, message=FALSE, echo = FALSE, fig.cap= '5-fold CV MSE and coefficients paths for MCP as a function of $\\log(\\lambda)$.', fig.height=7}
+# set.seed(100)
+# id_cv=sample(1:5, nrow(train), replace = T)
+# lambda_try=c(seq(0.003, 0.025, length.out=50), seq(0.025, 0.6, length.out=65))
+# set.seed(1)
+# cv.mcp35 = cv.ncvreg(X = X.train,y = train$y, folds = id_cv, lambda=lambda_try, gamma=3.5)
+# set.seed(1)
+# cv.mcp32 = cv.ncvreg(X = X.train,y = train$y, folds = id_cv, lambda=lambda_try, gamma=3.2)
+# set.seed(1)
+# cv.mcp3 = cv.ncvreg(X = X.train,y = train$y,  folds = id_cv, lambda=lambda_try, gamma=3)
+# set.seed(1)
+# cv.mcp2.8 = cv.ncvreg(X = X.train,y = train$y,  folds = id_cv, lambda=lambda_try, gamma=2.8)
+# cv.mcp35$lambda.min
+# cv.mcp32$lambda.min
+# cv.mcp3$lambda.min
+# cv.mcp2.8$lambda.min
+# 
+# sum(coef(cv.mcp2.8)!=0)
+# sum(coef(cv.mcp3)!=0)
+# sum(coef(cv.mcp32)!=0)
+# sum(coef(cv.mcp35)!=0)
+# plot(cv.mcp2.8)
+# plot(cv.mcp3)
+# plot(cv.mcp32)
+# plot(cv.mcp35)
+# 
+# cv.mcp2.8$cve[which(lambda_try==cv.mcp2.8$lambda.min)]
+# cv.mcp3$cve[which(lambda_try==cv.mcp3$lambda.min)]
+# cv.mcp32$cve[which(lambda_try==cv.mcp32$lambda.min)]
+# cv.mcp2.8$cve[which(lambda_try==cv.mcp2.8$lambda.min)]
+# 
+# cv.mcp=list(cv.mcp2.8, cv.mcp3, cv.mcp32, cv.mcp35)
+# names(cv.mcp)=c("mcp2.8", "mcp3", "mcp3.2", "mcp3.5")
+# save(cv.mcp, file="MCP_cv.RData")
+par(mfrow = c(2,1))
+load("MCP_cv.RData")
+mod.mcp.3=ncvreg(X = X.train,y = train$y, lambda=cv.mcp$mcp3$lambda.min)
+p.mcp3=predict(mod.mcp.3, X.test)
+mse.mcp3=mean( (p.mcp3-test$y)^2) 
+plot(cv.mcp$mcp3)
+mcp3=ncvreg(X.train, train$y)
+plot(mcp3)
+abline(v=cv.mcp$mcp3$lambda.min, col=2)
+```
+
+## SCAD
+
+Even for SCAD, the parameter $\gamma$ did not impact much on CV-error. We
+decided to set it equal to 3. $\lambda$ parameter was then chosen via cross validation and set equal to 0.02096. The model on the training set sets 28 coefficients different from zero and has a MSE of 0.1988 on the test set. Figure 5.6 reports cross-validation error graph and the coefficients paths for SCAD. The optimal solution lies in the non convexity area.
+
+```{r, eval=FALSE, echo = TRUE, cache = TRUE}
+set.seed(100)
+id_cv <- sample(1:5, nrow(train), replace = T)
+lambda_try <- c(seq(0.003, 0.025, length.out = 50),
+                seq(0.025, 0.6, length.out = 65))
+set.seed(1)
+cv.scad3 <- cv.ncvreg(X = X.train,y = train$y,
+                      penalty = 'SCAD', folds = id_cv,
+                      lambda = lambda_try, gamma = 3)
+mod.scad.3 <- ncvreg(X = X.train,y = train$y,
+                     lambda = cv.scad3$lambda.min)
+```
+
+```{r scad, cache = TRUE, echo = FALSE, warning=FALSE, message=FALSE, fig.cap='5-fold CV MSE and coefficients paths for SCAD as a function of $\\log(\\lambda)$.', fig.height= 7}
+# set.seed(100)
+# id_cv=sample(1:5, nrow(train), replace = T)
+# lambda_try=c(seq(0.003, 0.025, length.out=50), seq(0.025, 0.6, length.out=65))
+# set.seed(1)
+# cv.scad37 = cv.ncvreg(X = X.train,y = train$y, penalty = "SCAD", folds = id_cv, lambda=lambda_try)
+# set.seed(1)
+# cv.scad32 = cv.ncvreg(X = X.train,y = train$y, penalty = "SCAD", folds = id_cv, lambda=lambda_try, gamma=3.2)
+# set.seed(1)
+# cv.scad3 = cv.ncvreg(X = X.train,y = train$y, penalty = "SCAD", folds = id_cv, lambda=lambda_try, gamma=3)
+# set.seed(1)
+# cv.scad2.8 = cv.ncvreg(X = X.train,y = train$y, penalty = "SCAD", folds = id_cv, lambda=lambda_try, gamma=2.8)
+# cv.scad37$lambda.min
+# cv.scad32$lambda.min
+# cv.scad3$lambda.min
+# cv.scad2.8$lambda.min
+# 
+# sum(coef(cv.scad2.8)!=0)
+# sum(coef(cv.scad3)!=0)
+# sum(coef(cv.scad32)!=0)
+# sum(coef(cv.scad37)!=0)
+# 
+# 
+# cv.scad=list(cv.scad2.8, cv.scad3, cv.scad32, cv.scad37)
+# names(cv.scad)=c("scad2.8", "scad3", "scad32", "scad37")
+# save(cv.scad, file="Scad_cv.RData")
+load("Scad_cv.RData")
+mod.scad.3=ncvreg(X = X.train,y = train$y, penalty = "SCAD", gamma=3, lambda=cv.scad$scad3$lambda.min)
+#cat("Choosen lambda:", cv.scad$scad3$lambda.min)
+p.scad3=predict(mod.scad.3, X.test)
+mse.scad3=mean( (p.scad3-test$y)^2) 
+#cat('MSE SCAD GAMMA=3.7:', mse.scad3)
+par(mfrow = c(2,1))
+plot(cv.scad$scad3)
+scad3 = ncvreg(X.train, train$y, penalty='SCAD', gamma=3)
+plot(scad3)
+abline(v=cv.scad$scad3$lambda.min, col=2)
+```
+
+\vspace{4cm}
+
+## Models with interactions
+
+Taking into account the potential impact of collaborations, we consider several models that allow for first order interaction effects. Due to the large dimensionality of the dataset, we restrict attention to a selected subset of variables from both the training and test sets. Specifically, we selected 480 actors, 130 directors, 30 writers, 25 composers, and 10 words with most appearances across all observations. In particular, we implement LASSO and Elastic Net regressions.
+
+For the LASSO model, the regularization parameter $\lambda$ is selected via cross-validation. When estimated on the training set, the resulting model shows a test-set MSE of 0.19065. This value is higher than the MSE obtained by the LASSO model without interaction terms, indicating that the inclusion of second-order interactions does not improve predictive performance in this case. We will discuss this result further.
+
+```{r lasso int, cache = T, echo = FALSE, echo = FALSE}
+num_attori   = 480
+num_registi  = 130
+num_writer   = 30
+num_composer = 25
+num_words = 10
+
+keep_top_k_explicit = function(data, pattern, k) {
+  cols_pattern = grep(pattern, colnames(data), value = TRUE)
+  if (length(cols_pattern) == 0) return(data)
+  counts = colSums(data[, cols_pattern] == 1, na.rm = TRUE)
+  counts_sorted = sort(counts, decreasing = TRUE)
+  top_k = names(counts_sorted)[1:min(k, length(counts_sorted))]
+  cols_to_drop = setdiff(cols_pattern, top_k)
+  data = data[, !colnames(data) %in% cols_to_drop]
+  return(data)
+}
+film1 = film
+film1 = keep_top_k_explicit(film1, "^actor_",    num_attori)
+film1 = keep_top_k_explicit(film1, "^director_", num_registi)
+film1 = keep_top_k_explicit(film1, "^writer_",   num_writer)
+film1 = keep_top_k_explicit(film1, "^composer_", num_composer)
+film1 = keep_top_k_explicit(film1, "^word_",     num_words)
+
+## suddivisione in train e test del dataset secondario
+set.seed(2)
+n.train=round(0.75*nrow(film))
+id.train=sample(1:nrow(film),n.train)
+train1=film1[id.train,]
+test1=film1[-id.train,]
+
+#X.train1=model.matrix(y ~(.^2), data=train1)
+#X.test1 = model.matrix(y ~(.^2), data=test1)
+# set.seed(999)
+# lasso_int_cv=cv.glmnet(X.train1, train1$y)
+# plot(lasso_int_cv)
+# lasso_int=glmnet(X.train1, train1$y, lambda = lasso_int_cv$lambda.min)
+# save(lasso_int, file="lasso_with_interactions.RData")
+# rm(lasso_int_cv)
+# gc()
+#load("lasso_with_interactions.RData")
+#pred.lasso.int = predict(lasso_int, X.test1)
+#mse.lasso.int = mean( (test$y - pred.lasso.int)^2)
+load('mse_lasso_int.Rdata')
+#cat("MSE LASSO ALLOWING INTERACTIONS:", mse.lasso.int)
+```
+
+Using cross validation for both, $\alpha$ and $\gamma$, we estimated the Elastic Net on the training set. The fitted model shows a test-set MSE of 0.1901.
+
+```{r elastic net int, cache = TRUE, echo = FALSE}
+# set.seed(999)
+# alpha=c( 0.25, 0.45, 0.65, 0.85, 0.95)
+# err=NULL
+# for(i in 1:5){
+#   cat(i)
+#   tmp_mod=cv.glmnet(X.train1, train1$y, alpha=alpha[i], nfolds=4)
+#   err[i]=tmp_mod$cvm[tmp_mod$lambda == tmp_mod$lambda.min]
+# 
+# }
+# save(err, file="errori_alpha_elnet_with_interaction.RData")
+
+# set.seed(1234)
+# elnet_int=cv.glmnet(X.train1, train1$y, alpha=alpha_best, nfolds=6)
+# elnet_int=glmnet(X.train1, train1$y, alpha=alpha_best, lambda=elnet_int$lambda.min)
+# save(elnet_int, file="elasticnet_with_inter.RData")
+#load("elasticnet_with_inter.RData")
+load("errori_alpha_elnet_with_interaction.RData")
+alpha = c( 0.25, 0.45, 0.65, 0.85, 0.95)
+alpha_best=alpha[which.min(err)] 
+#cat('Choosen alpha:', alpha_best)
+#pred.elnet.int = predict(elnet_int, X.test1)
+#mse.elnet.int = mean( (test$y - pred.elnet.int)^2)
+load('mse_elnet_int.Rdata')
+#cat("MSE ELASTIC NET ALLOWING INTERACTIONS:", mse.elnet.int)
+```
+
+Looking at the mean squared errors, we can clearly see that these two
+models perform worse than LASSO regression and Elastic Net without
+interactions. This result was expected, considering that the number of
+actors and writers present in the sub-dataset is small. It would be
+interesting to estimate the models on the complete dataset using more
+advanced computational resources in order to capture the effects of all
+interactions.
+
+## Group LASSO
+
+Since our covariates are naturally divided into groups, we decided to
+fit a group LASSO model. Unlike the standard LASSO, the L1 penalty is
+applied to the L2 norm of groups of coefficients, rather than to
+individual coefficients. As a result, as the tuning parameter $\lambda$ increases, the
+norm of an entire group of coefficients can be pushed exactly to zero.
+This means that all coefficients belonging to that group will be set to
+zero, allowing for selection at the group level rather than at the level
+of single variables.
+
+The following groups are considered: 
+\begin{itemize}
+  \item Group 1: covariates referring to movie genres;
+  \item Group 2: covariates referring to actors;
+  \item Group 3: covariates referring to directors;
+  \item Group 4: covariates referring to screenwriters;
+  \item Group 5: covariates referring to composers;
+  \item Group 6: covariates referring to production countries;
+  \item Group 7: covariates referring to studios;
+  \item Group 8: covariates referring to content ratings;
+  \item Group 9: covariates referring to prizes won by the cast before the release of the movie;
+  \item Group 10: covariates referring to words present in the movie titles;
+  \item Group 11: covariates referring to time encoding;
+  \item Group 12: covariates referring to the budget levels;
+  \item Group 13: singlet group composed by the covariate \texttt{runtimeMinutes}.
+\end{itemize}
+
+Since the group LASSO model is a computationally heavy model, after
+several attempts, we decided to reduce the number of columns. In
+particular, we considered the 150 actors, the 80 directors, the 20
+writers, the 10 composers, the 15 words, the 10 studios, the 5 content
+ratings, the 7 countries and the 10 movie genres with the highest number
+of appearances. The train set and test set obtained from this secondary
+dataset have been split using the same seed as the original dataset, in
+order to maintain comparability with the other models.
+
+```{r cache=TRUE, echo= FALSE}
+
+keep_top_k_explicit = function(data, pattern, k) {
+  #columns that belong to the group (i.e. that match the pattern)
+  cols_pattern = grep(pattern, colnames(data), value = TRUE)
+  #numerosity of the group
+  counts = colSums(data[, cols_pattern] == 1, na.rm = TRUE)
+  #sorting based on number of apparitions
+  counts_sorted = sort(counts, decreasing = TRUE)
+  #top k columns
+  top_k = names(counts_sorted)[1:min(k, length(counts_sorted))]
+  cols_to_drop = setdiff(cols_pattern, top_k)
+  data = data[, !colnames(data) %in% cols_to_drop]
+  return(data)}
+
+```
+
+```{r, cache = TRUE, echo = FALSE}
+
+num_attori   = 150
+num_registi  = 80
+num_writer   = 20
+num_composer = 10
+num_words=15
+num_studios = 10
+num_ratings = 5
+num_countries = 7
+num_genre=10
+
+#let us start from the original dataset and then gradually remove columns
+film2 = film
+film2 = keep_top_k_explicit(film2, "^actor_",    num_attori)
+film2 = keep_top_k_explicit(film2, "^director_", num_registi)
+film2 = keep_top_k_explicit(film2, "^writer_",   num_writer)
+film2 = keep_top_k_explicit(film2, "^composer_", num_composer)
+film2 = keep_top_k_explicit(film2, "^word_",     num_words)
+film2 = keep_top_k_explicit(film2, "^studio_",  num_studios)
+film2 = keep_top_k_explicit(film2, "^rating_",  num_ratings)
+film2 = keep_top_k_explicit(film2, "^country_", num_countries)
+film2 = keep_top_k_explicit(film2, "^genre_", num_genre)
+
+
+## Creating a new train set and test set for the new dataset
+#we use the same seed to make the results comparable
+set.seed(2)
+n.train=round(0.75*nrow(film))
+id.train=sample(1:nrow(film),n.train)
+train2=film2[id.train,]
+test2=film2[-id.train,]
+X.train2=as.matrix(train2[-1])
+X.test2=as.matrix(test2[-1])
+
+
+```
+
+```{r groups creation, cache = T}
+
+col_names = colnames(train2)[-1]
+
+# groups creation
+group = rep(NA, ncol(train2)-1)
+group[grep("^genre_",    col_names)] = 1
+group[grep("^actor_",    col_names)] = 2
+group[grep("^director_", col_names)] = 3
+group[grep("^writer_",   col_names)] = 4
+group[grep("^composer_", col_names)] = 5
+group[grep("^country_",  col_names)] = 6
+group[grep("^studio_",   col_names)] = 7
+group[grep("^rating_",   col_names)] = 8
+group[c(which(col_names=="oscars_before"),
+        which(col_names=="total_awards_before"))] = 9
+group[grep("^time_",   col_names)] = 10
+group[grep("^word_",   col_names)] = 11
+group[grep("^budget_",   col_names)] = 12
+# singlet group
+unassigned_idx = which(is.na(group))
+group[unassigned_idx]=13
+
+```
+
+### Model regularization
+
+The optimal value of the tuning parameter $\lambda$ = 0.00019 was
+identified minimizing the prediction error via 4-fold cross-validation on the reduced train set, utilizing a user selected grid of
+30 values of $\lambda$. Despite having reduced the number of columns and
+having considered a small number of values of lambda, the \texttt{cv.gglasso}
+function still struggled to fit models for really small values of
+$\lambda$, thus the tolerance of the algorithm had to be decreased to
+1e-4.
+```{r, eval=FALSE, cache = TRUE}
+library(gglasso)
+lambda.values <- 10^seq(-5, 0.3, length = 30)
+set.seed(1)
+cv.grouplasso <- cv.gglasso(x = X.train2, y = train2$y,
+                            group = group,eps = 1e-4,
+                            lambda = lambda.values,
+                            nfolds = 4)
+```
+
+```{r group lasso tuning, cache=TRUE, echo = FALSE, fig.cap='4-fold CV MSE as a function of $\\log(\\lambda)$.'}
+library(gglasso)
+lambda.values=10^seq(-5,0.3,length=30)
+
+#cv.grouplasso=cv.gglasso(x=X.train2,y=train2$y,group = group,eps=1e-4,lambda = lambda.values, nfolds = 4)
+load("cv.grouplasso.RData")
+
+#cross validation plot
+plot(cv.grouplasso)
+#best value of lambda
+best.lambda.grouplasso=cv.grouplasso$lambda.min
+
+
+```
+
+After having identified the optimal value of lambda, we fit the model on
+the whole train set, and we compute the prediction error on the test
+set. Unsurprisingly, the prediction error of this model (MSE = 0.20571) is worse than
+the prediction error of the LASSO model: in fact, the optimal lambda is
+small enough that all of the groups are included, thus there is no
+sparsity. This suggests us that all groups contain at least some
+important variables and it's better to include all of predictors rather
+than exclude the whole group. Moreover, the prediction error of the group LASSO model is higher than that of the ridge model, since the number of columns had to be reduced in order to fit this specific model. 
+
+```{r group lasso mse, cache=TRUE, echo = FALSE}
+#final model
+#mod.grouplasso=gglasso(x=X.train2,y=train2$y,group = group,eps=1e-4,lambda = best.lambda.grouplasso)
+#save(mod.grouplasso,file="modello_grouplasso.RData")
+load("modello_grouplasso.RData")
+#prediction 
+pred.grouplasso=predict(mod.grouplasso,newx=X.test2)
+#MSE
+mse.grouplasso=mean((pred.grouplasso - test2$y)^2)
+```
+
+### Interpretation of the results
+
+The group LASSO model sets entire groups of coefficients to zero
+depending on the value of the penalty parameter $\lambda$. Our goal is
+to evaluate the importance of whole groups of variables by checking
+which groups remain active for different values of $\lambda$.
+
+From the heatmap and the coefficients' paths in Figures 5.8-5.10, we can see that the most
+persistent groups are the movie genre, the runtime of the movies and the
+time-related variables, such as the year and month the film was
+released. On the other hand, the less persistent groups are the
+directors and the writers. This result is likely influenced by group size. Large groups seem to be pushed to zero more quickly, even when they include several coefficients that were found to be important by other sparse models, such as the actor group. On the other hand, smaller groups seem to remain active for larger values of the penalty, even if they contain fewer relevant variables.
+This behavior may be partly explained by the fact that $\texttt{gglasso}$ automatically applies group weights equal to the square root of the group size, in order to correct for differences in group numerosity. However, since the groups in our analysis are extremely unbalanced in size, it is likely that very large groups have been over penalized.
+
+```{r group lasso, echo = FALSE, cache = TRUE, fig.cap= 'Group LASSO coefficients paths as a function of $\\log_{10}(\\lambda)$, colored by group.'}
+#COEFFICIENT PATH
+
+
+# Definizione colori e nomi dei gruppi
+group_colors = c(
+  "#800000", # bordeaux
+  "#FF6666", # rosso chiaro
+  "#FFA500", # arancione
+  "#FFDB58", # giallo senape
+  "#90EE90", # verde chiaro
+  "#006400", # verde scuro
+  "#0000FF", # blu
+  "#00BFFF", # azzurro
+  "#FFC0CB", # rosa
+  "#800080", # viola
+  "#C8A2C8", # lilla
+  "#808080", # grigio
+  "#000000"  # nero
+)
+
+group_names = c("genre", "actor", "director", "writer", "composer", "country", "studio",
+                "rating", "awards", "time", "word", "budget", "runtime")
+
+#Coefficients for different values of lambda
+beta.lambda.grouplasso = cv.grouplasso$gglasso.fit$beta
+lambda.values = cv.grouplasso$lambda
+beta.lambda.grouplasso_t = t(beta.lambda.grouplasso) 
+col_var = group_colors[group]
+
+#coefficient path
+matplot(log10(lambda.values), beta.lambda.grouplasso_t,type = "l", lty = 1,lwd=2,col = col_var,xlab = expression(log10(lambda)),ylab= "Coefficients")
+
+# Legenda
+legend("topright",legend = group_names,col = group_colors,
+       lty = 1, lwd=2,
+       cex = 0.8,
+       ncol = 2
+)
+```
+
+```{r group lasso2, echo = FALSE, cache = TRUE, fig.cap= 'Group LASSO coefficients paths as a function of $\\log_{10}(\\lambda)$, divided by group.'}
+# Uniamo il gruppo "time" (10) e "runtime" (13) in un unico gruppo
+group_plot = group
+group_plot[group %in% c(10, 13)] = 10
+plot_group_names = c("genre", "actor", "director", "writer", "composer", "country", "studio",
+                     "rating", "awards", "time/runtime", "word", "budget")
+
+plot_group_colors = group_colors[c(1:9, 10, 11, 12)] # escludiamo runtime, prendiamo il colore di "time" per il gruppo unito
+
+# Trasposta beta
+beta_mat_t = t(beta.lambda.grouplasso)
+
+# Iteriamo sui gruppi per fare un grafico ciascuno
+par(mfrow=c(3,4), mar=c(4,4,2,1)) # 3x4 griglia di grafici
+
+for(g in 1:12){
+  
+  # Indici delle variabili del gruppo g
+  idx = which(group_plot == g)
+  
+  if(length(idx) == 0) next
+  
+  # Colori per le variabili del gruppo
+  cols = rep(plot_group_colors[g], length(idx))
+  
+  # Plot dei coefficienti del gruppo
+  matplot(log10(lambda.values), beta_mat_t[, idx],
+          type = "l", lty = 1, lwd = 2,
+          col = cols,
+          xlab = expression(log10(lambda)),
+          ylab = "Coefficients",
+          main = plot_group_names[g])
+}
+
+# Aggiungiamo una legenda generale
+par(mfrow=c(1,1))
+legend("topright",
+       legend = plot_group_names,
+       col = plot_group_colors,
+       lty = 1, lwd = 2,
+       cex = 0.8)
+
+
+
+```
+
+```{r group lasso heatmap, echo = FALSE, cache = TRUE, fig.cap = 'Heatmap of active groups (identified by the color red) according to Group LASSO model for different values of $\\lambda$.'}
+
+## HEATMAP
+library(pheatmap)
+L = length(lambda.values)
+G=length(unique(group))
+active_matrix = matrix(0, nrow = G, ncol = L)
+
+for(g in 1:G){
+  idx = which(group == g)
+  active_matrix[g, ] = apply(beta.lambda.grouplasso[idx, , drop=FALSE], 2, function(col) any(col != 0))}
+
+rownames(active_matrix) = group_names
+colnames(active_matrix) = round(lambda.values, 5)
+
+pheatmap(active_matrix,
+         cluster_rows = FALSE,
+         cluster_cols = FALSE,
+         legend = FALSE,
+         color = c("lightgrey", "#E64B35"),)
+
+
+```
+
+\vspace{8cm}
+
+## Regression tree
+
+A regression tree was fitted, a non-parametric model that can
+automatically capture non-linear effects and interactions between
+predictors. Although its predictive performance is not particularly good
+if compared to more complex models, the tree is highly interpretable and
+can suggest the importance of a variable.
+
+### Model regularization
+
+The optimal number of leaves J for the tree was selected using a growing
+and pruning procedure, aiming to balance model complexity and predictive
+power. First, a saturated tree is fitted, with deviance close to zero.
+Then, starting from the full tree, the least important leaves (i.e.
+those causing the smallest increase in deviance) are removed one by one.
+
+Figure 5.9 shows how the relative cross-validated error changes with J. In
+this case, the deviance reaches a global minimum for J=28.
+```{r, eval =FALSE, cache=TRUE}
+library(rpart)
+mod.tree.sat <- rpart(y ~ . ,data = train, method = "anova",
+                      control = rpart.control(cp = 1e-5,
+                                              minsplit =  2,
+                                              minbucket = 1,
+                                              xval = 10))
+```
+
+```{r treepruning, cache=TRUE, echo = FALSE, fig.cap= 'Relative (to the null model) CV-error of the regression tree as a function of the number of splits.'}
+library(rpart)
+library(rpart.plot)
+
+#mod.tree.sat <- rpart(y ~ .,data = train,method = "anova",control = rpart.control(cp = 1e-5,minsplit = 2,minbucket = 1,xval = 10))
+
+#save(mod.tree.sat, file = "mod_tree_sat.RData")
+load("mod_tree_sat.RData")
+
+#pruning
+prune <- mod.tree.sat$cptable
+J <- prune[which.min(prune[, "xerror"]), "nsplit"]
+
+#deviance plot
+plot(prune[, "nsplit"],prune[, "xerror"],xlab = "Number of splits",type="l",ylab = "CV error",lwd=3)
+grid()
+abline(v = J, lwd = 2, col = 2)
+```
+
+After tuning the parameters, the regression tree was pruned, and we computed the prediction error on the test set,
+which is equal to 0.21695.
+
+```{r Tree mse, cache=TRUE, echo = FALSE}
+
+
+cp.opt <- prune[which.min(prune[, "xerror"]), "CP"]
+
+mod.tree <- prune.rpart(mod.tree.sat, cp = cp.opt)
+pred.tree = predict(mod.tree, test)
+err.tree = mean((test$y - pred.tree)^2)
+
+```
+
+### Interpretation
+
+Variables that appear in the first splits of the tree, such as the
+runtime, or the drama genre are often the most influential for dividing
+the data. However, this does not necessarily mean they are the most
+important variables for explaining the overall phenomenon. A covariate
+can appear in multiple splits, and what really matters is the effect of
+a specific split point, rather than the presence of the variable in
+general.
+
+From this plot, we can deduce that the runtime, some specific genres and
+the release year have a strong impact on the rating. On the other hand,
+we can see that variables like the content rating, the writers, the
+composers, the words in the title, the production studio and the month
+of release do not appear at any split.
+
+```{r, cache = T, echo = FALSE, warning=FALSE,out.width='\\textwidth', out.height='0.9\\textheight', fig.align='center', fig.cap= 'Regression tree.'}
+
+# rpart.plot(
+#   mod.tree,
+#   type = 4,
+#   extra = 0,
+#   fallen.leaves = TRUE,
+#   cex = 0.5,
+#   nn = TRUE,
+#   box.palette = "Greens",
+#   branch.lty = 1
+# )
+
+knitr::include_graphics("treePlot_rotated.png")
+```
+
+\vspace{5cm}
+
+## Random Forest
+
+A Random Forest model was fitted. This model combines a large number of
+regression trees, which are known to be highly unstable and variable,
+meaning that small changes in the data can lead to large differences in
+the fitted model. By aggregating many trees, this approach reduces the
+overall variance.
+
+Unlike other ensemble methods, Random Forests reduce the correlation
+between individual trees by randomly selecting a subset of variables at
+each split. This leads to trees that are very different from each other.
+As a result, the method can effectively capture complex and non-linear
+relationships between the predictors and the response variable, without
+requiring specific assumptions about the functional form of the model.
+
+### Model regularization
+
+The main tuning parameters of the trees are the number of covariates
+sampled at each split and the total number of trees in the forest: this
+last parameter does not minimize the error at a specific value, but the
+error tends to stabilize as the number of trees increases. The first
+plot shows the behavior of the out-of-bag (OOB) error (that is, the
+error evaluated on observations not sampled at each iteration) as the
+number of trees increases, for different values of the number of sampled
+predictors. The two values of the number of sampled predictors that
+(almost uniformly) minimize the out-of-bag error are 300 and 600. Since
+they seem to give similar results, we choose the simpler model with
+\texttt{mtry=300}. Moreover, the OOB error appears to stabilize after about 500
+trees. Therefore, we choose this value for the number of trees.
+
+```{r, eval=FALSE, echo= TRUE, cache=TRUE}
+library(ranger)
+mtry.values <- c(3,15,40,80,150,300,600,1200,2400)
+trees.values <- c(50, 100, 200, 300, 500,1000)
+
+ERR.randfor <- matrix(NA, nrow = length(trees.values), 
+                      ncol = length(mtry.values))
+
+# Grid search on mtry and trees.values
+for (v in 1:length(mtry.values)) {for (a in 1:length(trees.values)) {
+  cat('\n',mtry.values[v])
+  mod.randfor.temp = ranger(y ~ ., data = train, 
+                            mtry = mtry.values[v], 
+                            num.trees = trees.values[a])
+  ERR.randfor[a, v] = mod.randfor.temp$prediction.error
+}}
+
+best_mtry_idx <- which.min(apply(ERR.randfor, 2, min))
+best_mtry <- mtry.values[best_mtry_idx]
+
+best_num.trees <- 500 
+
+
+
+# Final model
+mod.randfor <- ranger(y ~ ., data = train,
+                      mtry = best_mtry, 
+                      num.trees = best_num.trees, 
+                      importance = "impurity", 
+                      seed = 1)
+```
+
+```{r RF tuning, cache = T, echo= FALSE, fig.cap= 'OOB prediction error as a function of the number of trees, for different values of $\\texttt{mtry}$.'}
+library(ranger)
+#grid of mtry values
+mtry.values =  c(3,15,40,80,150,300,600,1200,2400)
+
+#grid of number of trees values
+alberi.values = c(50, 100, 200, 300, 500,1000)
+#preallocation of the error matrix
+ERR.randfor = matrix(NA, nrow = length(alberi.values), ncol = length(mtry.values))
+
+# Grid search on mtry e num.trees
+# for (v in 1:length(mtry.values)) {for (a in 1:length(alberi.values)) {
+#   cat('\n',mtry.values[v])
+#   mod.randfor.temp = ranger(y ~ ., data = train, mtry = mtry.values[v], num.trees = alberi.values[a])
+#   ERR.randfor[a, v] = mod.randfor.temp$prediction.error
+# }}
+
+#save(ERR.randfor,"ERRORE_random_forest.RData")
+
+load("ERRORE_random_forest.RData")
+
+#OOB error as a function of the number of trees, colored by mtry
+matplot(alberi.values, ERR.randfor, type = "l", lty = 1, col = 1:length(mtry.values), lwd=2,
+        xlab = "Number of trees", ylab = "OOB prediction error")
+grid()
+legend(x = max(alberi.values) * 0.8, y = 0.205,
+       legend = paste("mtry =", mtry.values),
+       col = 1:length(mtry.values), lty = 1, lwd = 2,
+       cex = 0.6, bg = 'white')
+
+# Selezione valore ottimale di mtry (quello che minimizza l’errore per qualsiasi numero di alberi)
+best_mtry_idx = which.min(apply(ERR.randfor, 2, min))
+best_mtry = mtry.values[best_mtry_idx]
+best_numalberi=500 #valore dopo cui sembrano essersi tutti stabilizzati
+```
+
+After tuning the parameters, we fit the tuned model to the
+whole training set, and we compute the prediction error on the test set.
+The mean squared error of the random forest model on the test set is
+0.1757, showing that this model is one of the most effective ones thus
+far from a predictive point of view. However, the prediction error is
+only slightly better than the one of sparse and penalized linear models,
+such as LASSO and elastic net.
+
+```{r RF mse, cache=TRUE, echo = FALSE}
+#Final model
+library(ranger)
+#mod.randfor = ranger(y ~ ., data = train, mtry = best_mtry, num.trees = best_numalberi, importance = "impurity", seed = 1)
+#save(mod.randfor,file="modello_random_forest.RData")
+load("modello_random_forest.RData")
+test1 <- test
+colnames(test1)[3030] <- "budget_very_high"
+# Prediction on the test set
+pred.randfor = predict(mod.randfor, data = test1)$predictions
+#Error on the test set
+err.randfor = mean((test1$y - pred.randfor)^2)
+#cat("MSE on the test set:", round(err.randfor, 4), "\n")
+
+
+```
+
+### Interpretation
+
+Variable importance was evaluated using the permutation method on the
+out-of-bag data. This method measures the increase in prediction error
+when the values of a predictor are randomly shuffled, breaking the
+relationship between that variable and the response. This allows us to
+identify which covariates are most important for the model. In this
+case, the most relevant variables are the runtime, several genres
+(especially the drama and horror genre), the release year, whether the
+movie was produced in the United States and the number of awards won
+before the release of the movie by the cast.
+
+However, this method only provides a numerical measure of importance and
+does not indicate the functional form (linear, quadratic, etc.) and,
+most importantly, the direction of the relationship between response and
+predictors. For example, we see that the horror genre is one of the most
+important predictors: one might wrongly assume that it is positively
+linked with the IMDb rating of the movie but, in reality, as it was seen
+from the previous models, it is actually strongly negatively linked.
+
+```{r, cache = TRUE, echo = FALSE, fig.cap= 'Relative variable importance - Random Forest.'}
+
+col_names <- colnames(train)[-1]
+group <- rep(NA, length(col_names))
+
+group[grep("^genre_",    col_names)] = 1
+group[grep("^actor_",    col_names)] = 2
+group[grep("^director_", col_names)] = 3
+group[grep("^writer_",   col_names)] = 4
+group[grep("^composer_", col_names)] = 5
+group[grep("^country_",  col_names)] = 6
+group[grep("^studio_",   col_names)] = 7
+group[grep("^rating_",   col_names)] = 8
+
+# gruppo premi
+group[c(
+  which(col_names == "oscars_before"),
+  which(col_names == "total_awards_before")
+)] = 9
+
+group[grep("^time_",   col_names)] = 10
+group[grep("^word_",   col_names)] = 11
+group[grep("^budget_", col_names)] = 12
+
+# variabili singole / non assegnate
+unassigned_idx <- which(is.na(group))
+group[unassigned_idx] <- 13
+
+group_colors <- c(
+  "#800000", # genre
+  "#FF6666", # actor
+  "#FFA500", # director
+  "#FFDB58", # writer
+  "#90EE90", # composer
+  "#006400", # country
+  "#0000FF", # studio
+  "#00BFFF", # rating
+  "#FFC0CB", # awards
+  "#800080", # time
+  "#C8A2C8", # word
+  "#808080", # budget
+  "#000000"  # runtime / other
+)
+
+group_names = c("Genre", "Actor", "Director", "Writer", "Composer", "Country", "Studio","Rating", "Awards", "Time", "Word", "Budget", "Runtime")
+
+var.imp <- sort(mod.randfor$variable.importance, decreasing = TRUE)
+rel.imp <- var.imp/max(var.imp)
+top_vars <- names(rel.imp)[1:50]
+
+group_vec <- group[match(top_vars, col_names)]
+
+top_vars <- gsub("time_mese_sin", "time_month_sin", top_vars)
+top_vars <- gsub("time_mese_cos", "time_month_cos", top_vars)
+
+top_vars <- gsub("^(actor|genre|director|writer|composer|country|studio|time|word|runtime)_",
+                    "",
+                    top_vars)
+top_vars <- gsub("_", " ", top_vars)
+
+
+
+bar_cols <- group_colors[group_vec]
+
+barplot(rel.imp[1:50],
+        col = bar_cols,
+        las = 2,
+        ylab = "Relative importance",
+        names.arg = top_vars,
+        cex.names = 0.47)
+legend("topright",
+       legend = group_names,
+       fill = group_colors,
+       cex = 0.5,
+       bty = "n")
+
+
+```
+
+## Gradient tree boosting
+
+Gradient tree boosting is an ensemble learning technique that builds a predictive model
+by combining a large number of weak learners.
+Each new tree is trained to correct the errors of the previous ones by minimizing a specified loss function through gradient descent.
+
+XGBoost (\textit{Extreme Gradient Boosting}) is an efficient and regularized implementation of Gradient Tree Boosting. It extends the standard framework by introducing regularization on tree complexity, shrinkage, column subsampling, and second-order optimization, improving both predictive performance and robustness. Moreover, XGBoost is specifically designed to handle sparse and high-dimensional data efficiently.
+Hyperparameters tuning was conducted via a grid search over three key parameters: the learning rate $\eta$, the maximum tree depth $\texttt{max\_depth}$, and the number of boosting iterations $\texttt{nrounds}$. The hyperparameters' grid was constructed using heuristic criteria. These values were combined to form a three-dimensional grid, where each cell of the 3D array corresponds to a specific triplet of hyperparameter values ($\eta_i$,$\texttt{max\_depth}_j$,$\texttt{nrounds}_k$).
+Model selection was carried out using cross-validation, and the optimal configuration was chosen based on the minimization of the root mean squared error. The learning rate controls the contribution of each tree to the overall model and was set to 0.05 to reduce overfitting. The parameter $\texttt{max\_depth}$ = 6 determines the maximum depth of each decision tree and therefore governs model complexity. At the end, the number of boosting iterations was set to 200. For computational reasons, hyperparameters tuning was carried out using a sparse model matrix, as recommended for XGBoost in high-dimensional contexts. Since XGBoost natively exploits sparsity [@chen2016xgboost], this approach significantly reduced computational cost and memory requirements without affecting the results. In addition, row and column subsampling were employed by setting $\texttt{subsample}$ = 0.5 and $\texttt{colsample\_bytree}$ = 0.8. These parameters introduce randomness during tree construction, which helps reduce variance and overfitting while further improving computational efficiency.
+
+```{r, eval = FALSE, echo = TRUE, cache = TRUE}
+# Gradient Boosting tuning
+
+library(xgboost)
+library(Matrix)
+
+formula <- ~ . - 1   
+
+X_train_mat_tuning <- sparse.model.matrix(
+  formula,
+  data = train |> select(-y)
+)
+
+X_train_mat <- model.matrix(
+  formula,
+  data = train |> select(-y)
+)
+
+X_test_mat <- model.matrix(
+  formula,
+  data = test |> select(-y)
+)
+
+dtrain_tuning <- xgb.DMatrix(
+  data = X_train_mat_tuning,
+  label = train$y
+)
+
+dtrain <- xgb.DMatrix(
+  data = X_train_mat,
+  label = train$y
+)
+
+dtest <- xgb.DMatrix(
+  data = X_test_mat,
+  label = test$y
+)
+
+eta_grid       <- c(0.05, 0.1, 0.2, 0.3)
+max_depth_grid <- 2:6
+nrounds_grid   <- c(seq(100, 900, by = 100),
+                    seq(1000,19000, by = 1000))
+
+grid <- expand.grid(
+  eta = eta_grid,
+  max_depth = max_depth_grid,
+  nrounds = nrounds_grid
+)
+
+results <- vector("list", nrow(grid))
+
+set.seed(123)
+
+K <- 4
+n <- nrow(X_train_mat)
+
+fold_id <- sample(rep(1:K, length.out = n))
+
+folds <- lapply(1:K, function(k) {
+  which(fold_id == k)
+})
+
+for (i in seq_len(nrow(grid))) {
+
+  cat("Running:",
+      "eta =", grid$eta[i],
+      "max_depth =", grid$max_depth[i],
+      "nrounds =", grid$nrounds[i], "\n")
+
+  params <- list(
+    objective = "reg:squarederror",
+    eval_metric = "rmse",
+    eta = grid$eta[i],
+    max_depth = grid$max_depth[i],
+    subsample = 0.5,
+    colsample_bytree = 0.8
+  )
+
+  cv <- xgb.cv(
+    params = params,
+    data = dtrain_tuning,
+    folds = folds,
+    nrounds = grid$nrounds[i],
+    verbose = 0
+  )
+
+  rmse_last <- tail(cv$evaluation_log$test_rmse_mean, 1)
+
+  results[[i]] <- data.frame(
+    eta = grid$eta[i],
+    max_depth = grid$max_depth[i],
+    nrounds = grid$nrounds[i],
+    rmse = rmse_last
+  )
+}
+
+cv_summary <- bind_rows(results) |>
+  arrange(rmse)
+```
+
+
+
+```{r xgboost tuning, echo=F, cache=TRUE, message= FALSE}
+# Gradient Boosting tuning
+
+library(xgboost)
+library(Matrix)
+
+formula <- ~ . - 1   
+
+X_train_mat_tuning <- sparse.model.matrix(
+  formula,
+  data = train |> select(-y)
+)
+
+X_train_mat <- model.matrix(
+  formula,
+  data = train |> select(-y)
+)
+
+X_test_mat <- model.matrix(
+  formula,
+  data = test |> select(-y)
+)
+
+dtrain_tuning <- xgb.DMatrix(
+  data = X_train_mat_tuning,
+  label = train$y
+)
+
+dtrain <- xgb.DMatrix(
+  data = X_train_mat,
+  label = train$y
+)
+
+dtest <- xgb.DMatrix(
+  data = X_test_mat,
+  label = test$y
+)
+# 
+# eta_grid       <- c(0.05, 0.1, 0.2, 0.3)
+# max_depth_grid <- 2:6
+# nrounds_grid   <- c(seq(100, 900, by = 100),
+#                     seq(1000,19000, by = 1000))
+# 
+# grid <- expand.grid(
+#   eta = eta_grid,
+#   max_depth = max_depth_grid,
+#   nrounds = nrounds_grid
+# )
+# 
+# results <- vector("list", nrow(grid))
+# 
+# set.seed(123)
+# 
+# K <- 4
+# n <- nrow(X_train_mat)
+# 
+# fold_id <- sample(rep(1:K, length.out = n))
+# 
+# folds <- lapply(1:K, function(k) {
+#   which(fold_id == k)
+# })
+# 
+# 
+# for (i in seq_len(nrow(grid))) {
+#   
+#   cat("Running:",
+#       "eta =", grid$eta[i],
+#       "max_depth =", grid$max_depth[i],
+#       "nrounds =", grid$nrounds[i], "\n")
+#   
+#   params <- list(
+#     objective = "reg:squarederror",
+#     eval_metric = "rmse",
+#     eta = grid$eta[i],
+#     max_depth = grid$max_depth[i],
+#     subsample = 0.5,
+#     colsample_bytree = 0.8
+#   )
+#   
+#   cv <- xgb.cv(
+#     params = params,
+#     data = dtrain_tuning,
+#     folds = folds,
+#     nrounds = grid$nrounds[i],
+#     verbose = 0
+#   )
+#   
+#   rmse_last <- tail(cv$evaluation_log$test_rmse_mean, 1)
+#   
+#   results[[i]] <- data.frame(
+#     eta = grid$eta[i],
+#     max_depth = grid$max_depth[i],
+#     nrounds = grid$nrounds[i],
+#     rmse = rmse_last
+#   )
+# }
+# 
+# cv_summary <- bind_rows(results) |>
+#   arrange(rmse)
+
+# saveRDS(cv_summary, file = 'risultati_tuning_XGBOOST_completi.rds')
+cv_summary <- readRDS(file = 'risultati_tuning_XGBOOST_completi.rds')
+```
+
+```{r xgboost tuning graph, echo=FALSE, cache=TRUE, fig.cap='4-fold CV RMSE for 4 different values of $\\eta$ and maximum tree depth, as a function of the number of boosting iterations.'}
+ggplot(cv_summary,
+       aes(x = nrounds, y = rmse,
+           color = factor(max_depth))) +
+  xlab(label = 'Number of iterations') + 
+  ylab(label = '4-fold CV RMSE') + 
+  geom_line(linewidth = 0.63) +
+  facet_wrap(~ eta, scales = "free_y") +
+  labs(color = "Maximum tree depth") +
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme_bw()
+```
+
+```{r xgboost tuning graph2, echo=FALSE, cache=TRUE, fig.cap='4-fold CV RMSE for $\\eta$ = 0.05 and maximum tree depth, as a function of the number of boosting iterations.'}
+ggplot(cv_summary |> filter(eta == 0.05 & nrounds < 5000),
+       aes(x = nrounds, y = rmse,
+           color = factor(max_depth))) +
+  xlab(label = 'Number of iterations') + 
+  ylab(label = '4-fold CV RMSE') + 
+  geom_line(linewidth = 0.7) +
+  geom_vline(
+    xintercept = 200,
+    linetype = "dashed",
+    color = 'darkred',
+    linewidth = 0.8
+  ) +
+  geom_hline(
+    yintercept = min(cv_summary$rmse),
+    linetype = "dashed",
+    color = 'darkred',
+    linewidth = 0.8
+  )+
+  labs(color = "Maximum tree depth") +
+  theme_bw()
+```
+
+```{r xgboost mse, echo = FALSE, cache = TRUE}
+library(xgboost)
+best <- cv_summary[1, ]
+#best
+
+params_best <- list(
+  objective = "reg:squarederror",
+  eval_metric = "rmse",
+  eta = best$eta,
+  max_depth = best$max_depth,
+  subsample = 0.5,
+  colsample_bytree = 0.8
+)
+
+set.seed(1)
+fit_final <- xgboost(
+  data = dtrain,
+  params = params_best,
+  nrounds = best$nrounds,
+  verbose = 0,
+)
+
+pred <- predict(fit_final, dtest)
+err.xgboost <- mean((pred - test$y)^2)
+#err.xgboost
+```
+
+```{r, eval = FALSE, echo = TRUE, cache = TRUE}
+best <- cv_summary[1, ]
+
+params_best <- list(
+  objective = "reg:squarederror",
+  eval_metric = "rmse",
+  eta = best$eta,
+  max_depth = best$max_depth,
+  subsample = 0.5,
+  colsample_bytree = 0.8
+)
+
+set.seed(1)
+xgboost.tuned <- xgboost(
+  data = dtrain,
+  params = params_best,
+  nrounds = best$nrounds,
+  verbose = 0,
+)
+```
+
+
+
+```{r graficoxgboost, echo=FALSE, fig.cap='Relative variable importance - Gradient Boosting.', cache=TRUE}
+
+importance_matrix <- xgb.importance(model = fit_final)
+
+top_n <- 50
+top_vars <- importance_matrix$Feature[1:top_n]
+rel_gain <- importance_matrix$Gain[1:top_n] / max(importance_matrix$Gain)
+
+col_names <- colnames(train)[-1]  
+group <- rep(NA, length(col_names))
+
+group[grep("^genre_",    col_names)] = 1
+group[grep("^actor_",    col_names)] = 2
+group[grep("^director_", col_names)] = 3
+group[grep("^writer_",   col_names)] = 4
+group[grep("^composer_", col_names)] = 5
+group[grep("^country_",  col_names)] = 6
+group[grep("^studio_",   col_names)] = 7
+group[grep("^rating_",   col_names)] = 8
+group[c(which(col_names=="oscars_before"), which(col_names=="total_awards_before"))] = 9
+group[grep("^time_",     col_names)] = 10
+group[grep("^word_",     col_names)] = 11
+group[grep("^budget_",   col_names)] = 12
+group[is.na(group)] <- 13
+
+group_colors <- c(
+  "#800000", "#FF6666", "#FFA500", "#FFDB58", "#90EE90", "#006400",
+  "#0000FF", "#00BFFF", "#FFC0CB", "#800080", "#C8A2C8", "#808080", "#000000"
+)
+
+# var.imp <- sort(mod.randfor$variable.importance, decreasing = TRUE)
+# rel.imp <- var.imp/max(var.imp)
+# top_vars <- names(rel.imp)[1:50]
+# 
+# group_vec <- group[match(top_vars, col_names)]
+# 
+# top_vars <- gsub("time_mese_sin", "time_month_sin", top_vars)
+# top_vars <- gsub("time_mese_cos", "time_month_cos", top_vars)
+# 
+# top_vars <- gsub("^(actor|genre|director|writer|composer|country|studio|time|word|runtime)_",
+#                     "",
+#                     top_vars)
+# top_vars <- gsub("_", " ", top_vars)
+# 
+# 
+# 
+# bar_cols <- group_colors[group_vec]
+
+group_names = c("Genre", "Actor", "Director", "Writer", "Composer", "Country", "Studio","Rating", "Awards", "Time", "Word", "Budget", "Runtime")
+
+top_vars_names <- top_vars
+group_vec <- group[match(top_vars_names, col_names)]
+
+
+
+top_vars_names <- gsub("time_mese_sin", "time_month_sin", top_vars_names)
+top_vars_names <- gsub("time_mese_cos", "time_month_cos", top_vars_names)
+
+top_vars_names <- gsub("^(actor|genre|director|writer|composer|country|studio|time|word|runtime)_",
+                    "",
+                    top_vars_names)
+top_vars_names <- gsub("_", " ", top_vars_names)
+
+bar_cols <- group_colors[group_vec]
+
+barplot(rel_gain,
+        names.arg = top_vars_names,
+        las = 2,
+        col = bar_cols,
+        ylab = "Relative importance",
+        cex.names = 0.47)
+legend("topright",
+       legend = c(
+         "Genre", "Actor", "Director", "Writer", "Composer", "Country", "Studio",
+         "Rating", "Awards", "Time", "Word", "Budget", "Runtime"
+       ),
+       fill = group_colors,
+       cex = 0.5,
+       bty = "n")
+```
+
+The final model was then estimated on the training set using the XGBoost framework and evaluated on an out-of-sample test set.
+Figure 5.17 shows that the most predictive variables are $\texttt{runtimeminutes}$, $\texttt{time\_startyear}$, and $\texttt{genre\_Drama}$.
+A comparison with the variable importance from the Random Forest model reveals substantial agreement, with both methods identifying essentially the same variables as the most important predictors. Predictive accuracy was assessed using the mean squared error, yielding a test error of 0.17336, which indicates the best so far out-of-sample performance.
+
+## Neural Network
+
+We implemented a feed-forward neural network with a single hidden layer and ReLU activation functions. Model selection was done via 4-fold cross-validation over a grid of hyperparameters, considering 6, 7 and 8 hidden units and a sequence of weight decay values in the interval $[10^{-4},10^{-2}]$.
+
+To reduce sensitivity to random initialization and in order to avoid the convergence to local minima, multiple seeds were used within each fold. 
+The optimal configuration selected 8 hidden units and a weight decay parameter equal to 0.000464. The final model was re-estimated on the full training set again using several random initializations, and the best-performing network was evaluated on the test set, achieving a test-set MSE of 0.1794. Better results could potentially be achieved by accounting for sparsity during neural network training. In this respect, LassoNet [@LassoNet] represents a suitable alternative, as it integrates feature selection into neural networks through an L1 penalization. However, in the present setting, fitting LassoNet model requires huge computational resources, which makes its application less feasible.
+
+# Conclusions
+
+## Models comparison
+
+We fitted several models. Some of them showed very strong predictive
+performance, such as the Random Forest, gradient boosting, and the neural network,
+but they offered limited interpretability. Other models are easier to
+interpret, but have weaker predictive accuracy.
+
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{l S[table-format=1.4]}
+\toprule
+\textbf{Model} & \textbf{MSE} \\
+\midrule
+\textbf{XGBoost}                    & \textbf{0.1734}   \\
+Random Forest                      & 0.1757            \\
+Neural Network                     & 0.1794            \\
+LASSO                              & 0.1828            \\
+Elastic Net                        & 0.1841            \\
+Elastic Net with interactions      & 0.1901            \\
+LASSO with interactions            & 0.1906            \\
+MCP ($\gamma = 3$)                 & 0.1953            \\
+Ridge                              & 0.1962            \\
+SCAD ($\gamma = 3$)                & 0.1988            \\
+Group LASSO                        & 0.2057            \\
+Regression Tree                    & 0.2169            \\
+\bottomrule
+\end{tabular}
+
+\caption{Comparison of predictive performance on the test set}
+\label{tab:mse_results.}
+\end{table}
+
+
+In this setting, simple linear models that assume sparsity perform
+surprisingly well. In particular, the LASSO model has a prediction error
+that is only slightly worse than that of much more complex and less
+interpretable models. This suggests that the main assumptions behind
+penalized linear models are reasonable: the relationship between the
+response and the predictors is approximately linear, and most
+coefficients are exactly zero.
+
+\vspace{3cm}
+
+## Prediction of \textit{The Odyssey}
+
+From a purely predictive point of view, the best-performing model is gradient boosting. Therefore, we choose this model to predict the IMDb rating of The Odyssey (2026), the upcoming movie produced by our client, directed by Christopher Nolan and starring Matt Damon, Anne Hathaway, Robert Pattinson, Zendaya, Lupita Nyong'O and Charlize Theron among others. The movie is an adaptation of the world known poem by Homer, it will be released in theaters in July 2026 and it is rumored to be over three hours long. Our best fitting model, gradient boosting, predicts a rating of 7,62 out of 10, which lies in the higher range.
+
+```{r prediction xgboost, cache = TRUE}
+
+#information about The odyssey (2026)
+x_odyssey <- c(
+  time_startYear = 2026,
+  runtimeMinutes = 180,
+  genre_Drama = 1,
+  genre_Action = 1,
+  genre_Adventure = 1, 
+  genre_History = 1,
+  
+  actor_Matt_Damon = 1,
+  actor_Tom_Holland = 1,
+  actor_Anne_Hathaway = 1,
+  actor_Elliot_Page = 1,
+  actor_Zendaya = 1,
+  actor_Robert_Pattinson = 1,
+  actor_Lupita_Nyong_o = 1,
+  actor_Charlize_Theron = 1,
+  actor_Jon_Bernthal = 1,
+  actor_Benny_Safdie = 1,
+  actor_John_Leguizamo = 1,
+  actor_Himesh_Patel = 1,
+  actor_Will_Yun_Lee = 1,
+  actor_Mia_Goth = 1,
+  actor_Jimmy_Gonzales = 1,
+  actor_Corey_Hawkins = 1,
+  actor_Shiloh_Fernandez = 1,
+  actor_Samantha_Morton = 1,
+  actor_Rafi_Gavron = 1,
+  actor_Bill_Irwin = 1,
+  actor_Logan_Marshall_Green = 1,
+  actor_James_Remar = 1,
+  
+  director_Christopher_Nolan = 1,
+  writer_Christopher_Nolan = 1,
+  composer_Ludwig_Goransson = 1,
+  
+  country_United_Kingdom = 1,
+  country_United_States = 1,
+  studio_Universal_Pictures = 1,
+  rating_R = 1,
+  budget_veryhigh = 1,
+  total_awards_before = 300,
+  oscars_before = 9
+)
+model_features <- colnames(test)[-1]
+
+x_odyssey_df <- as.data.frame(
+  matrix(0, nrow = 1, ncol = length(model_features))
+)
+colnames(x_odyssey_df) <- model_features
+
+common_vars <- intersect(names(x_odyssey), colnames(x_odyssey_df))
+x_odyssey_df[1, common_vars] <- x_odyssey[common_vars]
+
+x_odyssey_df <- x_odyssey_df[, model_features]
+
+X_test_mat_odyssey <- model.matrix(
+  formula,
+  data = x_odyssey_df 
+)
+
+x_odyssey_xgb <- xgb.DMatrix(
+  data = X_test_mat_odyssey
+)
+
+pred.odyssey <- predict(fit_final, x_odyssey_xgb)
+
+pred.odyssey.orig <- plogis(pred.odyssey)*9 + 1
+pred.odyssey.orig
+```
+
+## Interpretation of the results and final recommendations
+
+From an interpretative point of view, our results allow us to provide several strategic suggestions to our client on how to produce a critically successful movie. Overall, genre plays a key role: dramatic and realistic movies, as well as documentaries, tend to receive higher IMDb ratings, while horror and less realistic genres perform worse. Interestingly, animated movies also receive substantial critical praise. In addition, longer movies appear to be more appreciated by critics. 
+
+The choice of director is also crucial. Movies directed by well-established and critically acclaimed filmmakers, such as Christopher Nolan, Quentin Tarantino, George Lucas, Edgar Wright, Alfonso Cuarón, Denis Villeneuve, James Cameron, Guy Ritchie, Anthony Russo, Bryan Singer, and James Gunn, tend to achieve higher ratings. When it comes to animated films Brad Bird appears to be particularly influential.
+
+Regarding actors, several non-American actors, especially Indian actors, are strongly associated with higher IMDb ratings. Examples include Sushant Singh Rajput, Arshad Warsi, Saurabh Shukla, and Tamannaah Bhatia. This effect may be partly explained by the global nature of IMDb and the large Indian user base, which may favor actors from their own country. If our client is interested in expanding into the Indian market (which is large, growing, and becoming richer) casting well-known Indian actors could both increase IMDb ratings and help reach a market not yet fully exploited by Hollywood, potentially at a lower cost than hiring top Hollywood stars. Among Western actors, Ian McKellen, Zendaya, Mahershala Ali, Daniel Kaluuya, Jeremy Renner, and Hugo Weaving are positively associated with high ratings, while, surprisingly, most mainstream Hollywood stars do not appear among the top coefficients.
+
+On the other hand, our analysis suggests avoiding certain actors and directors. Actors such as Taylor Lautner, Madonna, and James Corden are linked to lower ratings. In some cases, these are celebrities rather than professional actors: although popular, they are frequently associated with low-quality blockbuster films rather than critically acclaimed productions. For directors, Uwe Boll and Aaron Seltzer stand out as particularly negative examples, likely due to their history of poorly received films. Other names, such as Jon M. Chu and Alan Cumming, also appear on the negative side, even if their reputations are less extreme.
+
+
+# Contributions
+
+The contributions of each member of the group to the final project are the following:
+
+\begin{itemize}
+  \item \textbf{Davide Bortoletto}: Gradient Boosting model, dataset creation through Wikidata scraping, dataset cleaning process, drafting of the graphs, drafting of the final Markdown document;
+  \item \textbf{Bryan Patarini}: Gradient Boosting model, dataset creation through Wikidata scraping, dataset cleaning process, exploratory analysis;
+  \item \textbf{Gianmarco Rosa}: LASSO model, Ridge model, Elastic Net model, SCAD model, MCP model, LASSO model with interactions, Elastic Net model with interactions, Neural Network model with PyTorch, dataset cleaning process;
+  \item \textbf{Greta Schiappacasse}: Group LASSO model, Random Forest, Regression Tree, dataset creation from IMDb bulk files and Wikidata scraping, dataset cleaning process, drafting of the introductory and final sections of the report.
+\end{itemize}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
